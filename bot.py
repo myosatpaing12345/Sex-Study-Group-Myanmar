@@ -6,7 +6,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-TOKEN = "YOUR_BOT_TOKEN"
+TOKEN = "8905518813:AAFTbzsu9BWXa4AokyEr0oPBCEZpng7ZXnA"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
