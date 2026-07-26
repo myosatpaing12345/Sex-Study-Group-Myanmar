@@ -25,7 +25,7 @@ def run_web_server():
     server.serve_forever()
 
 # --- Telegram Bot Config ---
-TOKEN = "YOUR_BOT_TOKEN_HERE"  # <--- သင့် Bot Token ကို ဒီမှာ ထည့်ပါ
+TOKEN = "8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"  # <--- သင့် Bot Token ကို ဒီမှာ ထည့်ပါ
 
 # Conversation States
 GENDER, ASK_AGE_INPUT, LOCATION, PROFILE_NAME, INTEREST, PHOTO = range(6)
