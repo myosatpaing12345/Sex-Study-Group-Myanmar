@@ -22,7 +22,7 @@ ASK_AGE_INPUT, LOCATION, PROFILE_NAME, INTEREST, PHOTO = range(5)
 # Conversation States for Editing Profile
 EDIT_CHOICE, EDIT_VALUE = range(5, 7)
 
-TOKEN = "YOUR_NEW_BOT_TOKEN_HERE"
+TOKEN = "8905518813:AAFTbzsu9BWXa4AokyEr0oPBCEZpng7ZXnA"
 
 # --- SQLite Database Setup ---
 
