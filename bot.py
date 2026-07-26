@@ -15,21 +15,25 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# Define Conversation States
+# Define Conversation States for Registration
 ASK_AGE_INPUT, LOCATION, PROFILE_NAME, INTEREST, PHOTO = range(5)
+
+# Define Conversation States for Editing Profile
+EDIT_CHOICE, EDIT_VALUE = range(5, 7)
 
 TOKEN = "YOUR_NEW_BOT_TOKEN_HERE"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("📝 Register", callback_data="register")]
+        [InlineKeyboardButton("📝 Register", callback_data="register")],
+        [InlineKeyboardButton("✏️ Edit Profile", callback_data="edit_profile")]
     ]
 
     await update.message.reply_text(
         "🔞 Sex Study Group Myanmar\n\n"
         "Welcome!\n\n"
         "This community is for adults (18+) only.\n\n"
-        "Please register to continue.",
+        "Please register or manage your profile to continue.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -155,19 +159,103 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "🎉 Profile registration completed successfully!\n"
-        "Use /find to discover nearby matches."
+        "Use /find to discover nearby matches or /edit to modify your profile."
+    )
+    return ConversationHandler.END
+
+# --- Edit Profile Flow ---
+
+async def start_edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("✏️ Name", callback_data="field_profile_name"), InlineKeyboardButton("✏️ Age", callback_data="field_age")],
+        [InlineKeyboardButton("✏️ Interest", callback_data="field_interest"), InlineKeyboardButton("✏️ Location", callback_data="field_location")],
+        [InlineKeyboardButton("🖼️ Photo/Video", callback_data="field_photo")]
+    ]
+    markup = InlineKeyboardMarkup(keyboard)
+
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text("Select the field you want to edit:", reply_markup=markup)
+    else:
+        await update.message.reply_text("Select the field you want to edit:", reply_markup=markup)
+        
+    return EDIT_CHOICE
+
+async def handle_edit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    selected_field = query.data.replace("field_", "")
+    context.user_data['editing_field'] = selected_field
+
+    if selected_field == "profile_name":
+        await query.edit_message_text("Enter your new Display Name:")
+    elif selected_field == "age":
+        await query.edit_message_text("Enter your new Age:")
+    elif selected_field == "interest":
+        keyboard = [["Men", "Women", "Everyone"]]
+        markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="Choose your new interest:", reply_markup=markup)
+    elif selected_field == "location":
+        location_btn = KeyboardButton(text="📍 Share Current Location", request_location=True)
+        markup = ReplyKeyboardMarkup([[location_btn]], resize_keyboard=True, one_time_keyboard=True)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="Share your new location or type your city name:", reply_markup=markup)
+    elif selected_field == "photo":
+        await query.edit_message_text("Please upload a new photo or video:")
+
+    return EDIT_VALUE
+
+async def receive_edit_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    field = context.user_data.get('editing_field')
+
+    if field == "age":
+        try:
+            age = int(update.message.text)
+            if age < 18:
+                await update.message.reply_text("You must be at least 18 years old.")
+                return EDIT_VALUE
+            context.user_data['age'] = age
+        except ValueError:
+            await update.message.reply_text("Please enter a valid number for age.")
+            return EDIT_VALUE
+
+    elif field == "location":
+        if update.message.location:
+            context.user_data['lat'] = update.message.location.latitude
+            context.user_data['lng'] = update.message.location.longitude
+            context.user_data['city'] = "GPS Location"
+        else:
+            context.user_data['city'] = update.message.text
+
+    elif field == "photo":
+        if update.message.photo:
+            context.user_data['photo_id'] = update.message.photo[-1].file_id
+        elif update.message.video:
+            context.user_data['photo_id'] = update.message.video.file_id
+        else:
+            await update.message.reply_text("Please send a valid photo or video.")
+            return EDIT_VALUE
+            
+    else:
+        # For profile_name or interest
+        context.user_data[field] = update.message.text
+
+    await update.message.reply_text(
+        f"✅ Your {field.replace('_', ' ')} has been updated successfully!",
+        reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Registration process cancelled.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Operation cancelled.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 # --- Application Setup ---
 
 app = Application.builder().token(TOKEN).build()
 
-conv_handler = ConversationHandler(
+# Registration Handler
+reg_conv_handler = ConversationHandler(
     entry_points=[
         CallbackQueryHandler(handle_gender_selection, pattern="^gender_")
     ],
@@ -181,9 +269,22 @@ conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel)],
 )
 
+# Edit Profile Handler
+edit_conv_handler = ConversationHandler(
+    entry_points=[
+        CommandHandler("edit", start_edit_profile),
+        CallbackQueryHandler(start_edit_profile, pattern="^edit_profile$")
+    ],
+    states={
+        EDIT_CHOICE: [CallbackQueryHandler(handle_edit_choice, pattern="^field_")],
+        EDIT_VALUE: [MessageHandler((filters.TEXT | filters.LOCATION | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND, receive_edit_value)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button_click, pattern="^(register|age_yes|age_no)$"))
-app.add_handler(conv_handler)
+app.add_handler(reg_conv_handler)
+app.add_handler(edit_conv_handler)
 
 app.run_polling()
-    
