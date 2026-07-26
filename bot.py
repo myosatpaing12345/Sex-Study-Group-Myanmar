@@ -25,11 +25,10 @@ def run_web_server():
     server.serve_forever()
 
 # --- Telegram Bot Config ---
-TOKEN = "8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"  # <--- သင့် Bot Token အသစ်ကို ဒီမှာ ထည့်ပါ
+TOKEN = "YOUR_BOT_TOKEN_HERE"  # <--- သင့် Bot Token ကို ဒီမှာ ထည့်ပါ
 
 # Conversation States
 GENDER, ASK_AGE_INPUT, LOCATION, PROFILE_NAME, INTEREST, PHOTO = range(6)
-EDIT_CHOICE, EDIT_VALUE = range(6, 8)
 
 # --- SQLite Database Setup ---
 def init_db():
@@ -38,6 +37,7 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
+            username TEXT,
             gender TEXT,
             age INTEGER,
             city TEXT,
@@ -57,14 +57,15 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_user_profile(user_id, data):
+def save_user_profile(user_id, username, data):
     conn = sqlite3.connect("match_bot.db")
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT OR REPLACE INTO users (user_id, gender, age, city, profile_name, interest, photo_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO users (user_id, username, gender, age, city, profile_name, interest, photo_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         user_id,
+        username,
         data.get('gender'),
         data.get('age'),
         data.get('city'),
@@ -78,7 +79,7 @@ def save_user_profile(user_id, data):
 def get_user_profile(user_id):
     conn = sqlite3.connect("match_bot.db")
     cursor = conn.cursor()
-    cursor.execute('SELECT gender, age, city, profile_name, interest, photo_id FROM users WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT gender, age, city, profile_name, interest, photo_id, username FROM users WHERE user_id = ?', (user_id,))
     row = cursor.fetchone()
     conn.close()
     if row:
@@ -88,7 +89,8 @@ def get_user_profile(user_id):
             'city': row[2],
             'profile_name': row[3],
             'interest': row[4],
-            'photo_id': row[5]
+            'photo_id': row[5],
+            'username': row[6]
         }
     return None
 
@@ -103,7 +105,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎂 Age: {profile['age']}\n"
             f"📍 City: {profile['city']}\n"
             f"🎯 Interest: {profile['interest']}\n\n"
-            f"Profile ပြင်ရန် /edit သို့မဟုတ် Match ရှာရန် /find ကို နှိပ်ပါ။"
+            f"Match ရှာရန် /find ကို နှိပ်ပါ။"
         )
         if profile.get('photo_id'):
             await update.message.reply_photo(photo=profile['photo_id'], caption=caption)
@@ -112,15 +114,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     reply_keyboard = [["ကျား (Male)", "မ (Female)", "အခြား (Other)"]]
+    welcome_text = (
+        "Welcome to Sex Study Group 🍷\n"
+        "Everyone Sex partnerရှာလိုက်ကြ‌ရအောင်🤪💋\n\n"
+        "Choose your Gender"
+    )
     await update.message.reply_text(
-        "မင်္ဂလာပါ! Dating & Match Bot မှ ကြိုဆိုပါတယ်။\nသင့်ရဲ့ Gender (လိင်) ကို ရွေးချယ်ပေးပါ-",
+        welcome_text,
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True),
     )
     return ASK_AGE_INPUT
 
 async def ask_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['gender'] = update.message.text
-    await update.message.reply_text("သင့်အသက်ကို ရိုက်ထည့်ပေးပါ (ဥပမာ- 22):", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("How Old are you (example- 18):", reply_markup=ReplyKeyboardRemove())
     return LOCATION
 
 async def ask_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -141,7 +148,7 @@ async def ask_profile_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ask_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['profile_name'] = update.message.text
-    reply_keyboard = [["ကျား (Male)", "မ (Female)", "မည်သူမဆို (Anyone)"]]
+    reply_keyboard = [["Male", "Female", "Anyone"]]
     await update.message.reply_text(
         "သင် မည်သည့် Gender ကို စိတ်ဝင်စားပါသနည်း-",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True),
@@ -154,19 +161,18 @@ async def ask_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📸 သင့် Profile အတွက် ဓာတ်ပုံတစ်ပုံ ပို့ပေးပါ (Match ရှာသည့်အခါ အခြားသူများ မြင်တွေ့ရမည်ဖြစ်ပါသည်):",
         reply_markup=ReplyKeyboardRemove()
     )
-    return 6  # Save complete state
+    return 6
 
 async def complete_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo:
         await update.message.reply_text("ကျေးဇူးပြု၍ ဓာတ်ပုံ (Photo) တစ်ပုံ ပို့ပေးပါရန်:")
         return 6
 
-    # ဓာတ်ပုံ ရယူခြင်း
     photo_file = update.message.photo[-1].file_id
     context.user_data['photo_id'] = photo_file
     
-    user_id = update.effective_user.id
-    save_user_profile(user_id, context.user_data)
+    user = update.effective_user
+    save_user_profile(user.id, user.username, context.user_data)
     
     await update.message.reply_text(
         "🎉 Profile သတ်မှတ်ခြင်း အောင်မြင်ပါသည်။\n/find ကို နှိပ်၍ Match များ စတင်ရှာဖွေနိုင်ပါပြီ။"
@@ -189,7 +195,6 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect("match_bot.db")
     cursor = conn.cursor()
     
-    # မိမိ မကြည့်ရသေးသော profile များကို ရှာခြင်း
     cursor.execute('''
         SELECT user_id, profile_name, gender, age, city, photo_id FROM users 
         WHERE user_id != ? AND user_id NOT IN (
@@ -215,7 +220,6 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📍 City: {target[4]}"
     )
 
-    # ဓာတ်ပုံနှင့်တကွ Profile ပြသခြင်း
     if target[5]:
         await update.message.reply_photo(
             photo=target[5],
@@ -242,14 +246,38 @@ async def handle_match_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     cursor = conn.cursor()
     cursor.execute('INSERT OR REPLACE INTO matches (user_id, target_id, action) VALUES (?, ?, ?)', (user_id, target_id, action))
     
-    # Match ဖြစ်မဖြစ် စစ်ဆေးခြင်း
     if action == "like":
         cursor.execute('SELECT action FROM matches WHERE user_id = ? AND target_id = ?', (target_id, user_id))
         match_status = cursor.fetchone()
+        
         if match_status and match_status[0] == "like":
-            await update.message.reply_text("🎉 အချစ်သစ်တွေ့ပြီ! ၎င်းလူပုဂ္ဂိုလ်လည်း သင့်ကို Like ပေးထားပါသည်။ (Match Successful!)")
+            user_prof = get_user_profile(user_id)
+            target_prof = get_user_profile(target_id)
+            
+            if user_prof.get('username'):
+                user_link = f"https://t.me/{user_prof['username']}"
+            else:
+                user_link = f"tg://user?id={user_id}"
+                
+            if target_prof.get('username'):
+                target_link = f"https://t.me/{target_prof['username']}"
+            else:
+                target_link = f"tg://user?id={target_id}"
+
+            msg_for_me = (
+                f"🎉 **အချစ်သစ်တွေ့ပါပြီ (Match Successful!)** 🎉\n\n"
+                f"သင်နှင့် **{target_prof['profile_name']}** တို့ အပြန်အလှန် Like ပေးထားကြပါသည်။\n\n"
+                f"💬 တိုက်ရိုက် စကားပြောရန် Link ကို နှိပ်ပါ - [{target_prof['profile_name']}]({target_link})"
+            )
+            await update.message.reply_text(msg_for_me, parse_mode='Markdown')
+            
+            msg_for_target = (
+                f"🎉 **အချစ်သစ်တွေ့ပါပြီ (Match Successful!)** 🎉\n\n"
+                f"သင်နှင့် **{user_prof['profile_name']}** တို့ အပြန်အလှန် Like ပေးထားကြပါသည်။\n\n"
+                f"💬 တိုက်ရိုက် စကားပြောရန် Link ကို နှိပ်ပါ - [{user_prof['profile_name']}]({user_link})"
+            )
             try:
-                await context.bot.send_message(chat_id=target_id, text="🎉 သင်နှင့် လူတစ်ဦး Match ဖြစ်သွားပါပြီ!")
+                await context.bot.send_message(chat_id=target_id, text=msg_for_target, parse_mode='Markdown')
             except Exception:
                 pass
     
@@ -261,13 +289,11 @@ async def handle_match_action(update: Update, context: ContextTypes.DEFAULT_TYPE
 def main():
     init_db()
 
-    # Web Server ကို Background Thread အဖြစ် Run ခြင်း
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
     app = Application.builder().token(TOKEN).build()
 
-    # Registration Conversation Handler
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
