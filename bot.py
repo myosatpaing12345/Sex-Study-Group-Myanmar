@@ -12,7 +12,7 @@ from telegram.ext import (
     filters,
 )
 
-# --- Render Web Service Port Scan အတွက် Web Server ငယ်လေး ---
+# --- Render Web Service Port Scan Keep-Alive Server ---
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -25,11 +25,11 @@ def run_web_server():
     server.serve_forever()
 
 # --- Telegram Bot Config ---
-TOKEN = "8905518813:AAEVRIW7BQwHg-5KAyPtm6NRTV9oTwlj4qU"  # <--- သင့် Bot Token အသစ်ကို ဒီမှာ ထည့်ပါ
+TOKEN = "8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"  # <--- သင့် Bot Token အသစ်ကို ဒီမှာ ထည့်ပါ
 
 # Conversation States
-ASK_AGE_INPUT, LOCATION, PROFILE_NAME, INTEREST = range(4)
-EDIT_CHOICE, EDIT_VALUE = range(4, 6)
+GENDER, ASK_AGE_INPUT, LOCATION, PROFILE_NAME, INTEREST, PHOTO = range(6)
+EDIT_CHOICE, EDIT_VALUE = range(6, 8)
 
 # --- SQLite Database Setup ---
 def init_db():
@@ -41,10 +41,9 @@ def init_db():
             gender TEXT,
             age INTEGER,
             city TEXT,
-            latitude REAL,
-            longitude REAL,
             profile_name TEXT,
-            interest TEXT
+            interest TEXT,
+            photo_id TEXT
         )
     ''')
     cursor.execute('''
@@ -62,17 +61,16 @@ def save_user_profile(user_id, data):
     conn = sqlite3.connect("match_bot.db")
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT OR REPLACE INTO users (user_id, gender, age, city, latitude, longitude, profile_name, interest)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO users (user_id, gender, age, city, profile_name, interest, photo_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     ''', (
         user_id,
         data.get('gender'),
         data.get('age'),
         data.get('city'),
-        data.get('latitude'),
-        data.get('longitude'),
         data.get('profile_name'),
-        data.get('interest')
+        data.get('interest'),
+        data.get('photo_id')
     ))
     conn.commit()
     conn.close()
@@ -80,7 +78,7 @@ def save_user_profile(user_id, data):
 def get_user_profile(user_id):
     conn = sqlite3.connect("match_bot.db")
     cursor = conn.cursor()
-    cursor.execute('SELECT gender, age, city, profile_name, interest FROM users WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT gender, age, city, profile_name, interest, photo_id FROM users WHERE user_id = ?', (user_id,))
     row = cursor.fetchone()
     conn.close()
     if row:
@@ -89,7 +87,8 @@ def get_user_profile(user_id):
             'age': row[1],
             'city': row[2],
             'profile_name': row[3],
-            'interest': row[4]
+            'interest': row[4],
+            'photo_id': row[5]
         }
     return None
 
@@ -98,7 +97,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     profile = get_user_profile(user_id)
     if profile:
-        await update.message.reply_text(
+        caption = (
             f"မင်္ဂလာပါ {profile['profile_name']}! သင့် Profile ရှိပြီးသားဖြစ်ပါသည်။\n\n"
             f"👤 Gender: {profile['gender']}\n"
             f"🎂 Age: {profile['age']}\n"
@@ -106,6 +105,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎯 Interest: {profile['interest']}\n\n"
             f"Profile ပြင်ရန် /edit သို့မဟုတ် Match ရှာရန် /find ကို နှိပ်ပါ။"
         )
+        if profile.get('photo_id'):
+            await update.message.reply_photo(photo=profile['photo_id'], caption=caption)
+        else:
+            await update.message.reply_text(caption)
         return ConversationHandler.END
 
     reply_keyboard = [["ကျား (Male)", "မ (Female)", "အခြား (Other)"]]
@@ -136,76 +139,42 @@ async def ask_profile_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot ထဲတွင် ပြသမည့် သင့် Profile နာမည် (Nickname) ကို ရိုက်ထည့်ပေးပါ:")
     return INTEREST
 
-async def save_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ask_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['profile_name'] = update.message.text
     reply_keyboard = [["ကျား (Male)", "မ (Female)", "မည်သူမဆို (Anyone)"]]
     await update.message.reply_text(
         "သင် မည်သည့် Gender ကို စိတ်ဝင်စားပါသနည်း-",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True),
     )
-    return 5  # Save complete state
+    return PHOTO
+
+async def ask_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['interest'] = update.message.text
+    await update.message.reply_text(
+        "📸 သင့် Profile အတွက် ဓာတ်ပုံတစ်ပုံ ပို့ပေးပါ (Match ရှာသည့်အခါ အခြားသူများ မြင်တွေ့ရမည်ဖြစ်ပါသည်):",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return 6  # Save complete state
 
 async def complete_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['interest'] = update.message.text
+    if not update.message.photo:
+        await update.message.reply_text("ကျေးဇူးပြု၍ ဓာတ်ပုံ (Photo) တစ်ပုံ ပို့ပေးပါရန်:")
+        return 6
+
+    # ဓာတ်ပုံ ရယူခြင်း
+    photo_file = update.message.photo[-1].file_id
+    context.user_data['photo_id'] = photo_file
+    
     user_id = update.effective_user.id
     save_user_profile(user_id, context.user_data)
     
     await update.message.reply_text(
-        "🎉 Profile သတ်မှတ်ခြင်း အောင်မြင်ပါသည်။\n/find ကို နှိပ်၍ Match များ စတင်ရှာဖွေနိုင်ပါပြီ။",
-        reply_markup=ReplyKeyboardRemove()
+        "🎉 Profile သတ်မှတ်ခြင်း အောင်မြင်ပါသည်။\n/find ကို နှိပ်၍ Match များ စတင်ရှာဖွေနိုင်ပါပြီ။"
     )
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("လုပ်ဆောင်ချက်ကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
-# --- Edit Profile Handlers ---
-async def edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    profile = get_user_profile(user_id)
-    if not profile:
-        await update.message.reply_text("သင့်မှာ Profile မရှိသေးပါ။ /start ကို နှိပ်၍ အရင် စာရင်းသွင်းပါ။")
-        return ConversationHandler.END
-
-    reply_keyboard = [["Name", "Age"], ["City", "Interest"], ["Cancel"]]
-    await update.message.reply_text(
-        "မည်သည့် အချက်အလက်ကို ပြင်ဆင်လိုပါသနည်း-",
-        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
-    )
-    return EDIT_CHOICE
-
-async def edit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    choice = update.message.text
-    if choice == "Cancel":
-        await update.message.reply_text("ပြင်ဆင်ခြင်းကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
-    
-    context.user_data['edit_field'] = choice.lower()
-    await update.message.reply_text(f"အသစ် ပြင်ဆင်လိုသော {choice} ကို ရိုက်ထည့်ပေးပါ-", reply_markup=ReplyKeyboardRemove())
-    return EDIT_VALUE
-
-async def edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    field = context.user_data.get('edit_field')
-    new_val = update.message.text
-    user_id = update.effective_user.id
-    
-    profile = get_user_profile(user_id)
-    if field == "name":
-        profile['profile_name'] = new_val
-    elif field == "age":
-        try:
-            profile['age'] = int(new_val)
-        except ValueError:
-            await update.message.reply_text("အသက်ကို ဂဏန်းသီးသန့် ပြန်ရိုက်ပေးပါ:")
-            return EDIT_VALUE
-    elif field == "city":
-        profile['city'] = new_val
-    elif field == "interest":
-        profile['interest'] = new_val
-
-    save_user_profile(user_id, profile)
-    await update.message.reply_text("✅ Profile အချက်အလက် အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။")
     return ConversationHandler.END
 
 # --- Find / Matching Handlers ---
@@ -222,7 +191,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # မိမိ မကြည့်ရသေးသော profile များကို ရှာခြင်း
     cursor.execute('''
-        SELECT user_id, profile_name, gender, age, city FROM users 
+        SELECT user_id, profile_name, gender, age, city, photo_id FROM users 
         WHERE user_id != ? AND user_id NOT IN (
             SELECT target_id FROM matches WHERE user_id = ?
         ) LIMIT 1
@@ -237,14 +206,27 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data['current_target'] = target[0]
     reply_keyboard = [["❤️ Like", "❌ Pass"]]
-    await update.message.reply_text(
+    
+    caption = (
         f"✨ Target Profile ✨\n\n"
         f"👤 Name: {target[1]}\n"
         f"🚻 Gender: {target[2]}\n"
         f"🎂 Age: {target[3]}\n"
-        f"📍 City: {target[4]}",
-        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
+        f"📍 City: {target[4]}"
     )
+
+    # ဓာတ်ပုံနှင့်တကွ Profile ပြသခြင်း
+    if target[5]:
+        await update.message.reply_photo(
+            photo=target[5],
+            caption=caption,
+            reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
+        )
+    else:
+        await update.message.reply_text(
+            caption,
+            reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
+        )
 
 async def handle_match_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -274,7 +256,6 @@ async def handle_match_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     conn.commit()
     conn.close()
     
-    await update.message.reply_text("မှတ်တမ်းတင်ပြီးပါပြီ။", reply_markup=ReplyKeyboardRemove())
     await find_match(update, context)
 
 def main():
@@ -293,24 +274,14 @@ def main():
             ASK_AGE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_age)],
             LOCATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_location)],
             PROFILE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_profile_name)],
-            INTEREST: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_profile)],
-            5: [MessageHandler(filters.TEXT & ~filters.COMMAND, complete_registration)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-
-    # Edit Profile Conversation Handler
-    edit_handler = ConversationHandler(
-        entry_points=[CommandHandler("edit", edit_start)],
-        states={
-            EDIT_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_choice)],
-            EDIT_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_save)],
+            INTEREST: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_interest)],
+            PHOTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_photo)],
+            6: [MessageHandler(filters.PHOTO, complete_registration)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     app.add_handler(conv_handler)
-    app.add_handler(edit_handler)
     app.add_handler(CommandHandler("find", find_match))
     app.add_handler(MessageHandler(filters.Regex("^(❤️ Like|❌ Pass)$"), handle_match_action))
 
