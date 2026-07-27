@@ -201,7 +201,7 @@ async def receive_like_message(update: Update, context: ContextTypes.DEFAULT_TYP
 def main():
     token = os.environ.get("8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw")
     if not token:
-        logger.error("TELEGRAM_BOT_TOKEN not found in environment variables!")
+        logger.error("8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw")
         return
 
     application = Application.builder().token(token).build()
