@@ -1,5 +1,7 @@
 import os
 import logging
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -99,7 +101,6 @@ async def gender_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
     gender = query.data.split("_")[1] # male or female
     
     # Temporary State သိမ်းရန်
@@ -123,9 +124,7 @@ async def target_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
     target = query.data.split("_")[1] # male, female, any
-    
     context.user_data['reg_target'] = target
     
     await query.message.edit_text(
@@ -195,16 +194,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Safety Fallback
     user_prof = get_user_profile(user_id)
     if not user_prof:
         await update.message.reply_text("⚠️ သင်၏ Profile မရှိသေးပါ။ /start ကိုနှိပ်ပြီး အစကနေ စတင်ပါ။")
         return
 
+# Render အတွက် Dummy Web Server (Port ပြဿနာ ဖြေရှင်းရန်)
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
+
 # Main Function
 def main():
-    # ⚠️ ဒီနေရာမှာ သင့်ရဲ့ Bot Token ကို ထည့်ပါ (Quotation mark မပျောက်စေနဲ့)
-    token = "8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"
+    # 1. Web Server ကို Background မှာ အရင် စတင်ပေးမည်
+    server_thread = threading.Thread(target=run_web_server, daemon=True)
+    server_thread.start()
+
+    # 2. Telegram Bot Token
+    token = "8905518813:AAFLofvwp-CrznhC8SEk4rjH20GoEub2Taw"
 
     application = Application.builder().token(token).build()
 
@@ -219,4 +233,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
