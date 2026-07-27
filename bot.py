@@ -218,7 +218,7 @@ def main():
     server_thread.start()
 
     # 2. Telegram Bot Token
-    token = "8905518813:AAFLofvwp-CrznhC8SEk4rjH20GoEub2Taw"
+    token = "8905518813:AAHZhj8kzWxxfmti86Sai5xnZIyv6fZU7tQ"
 
     application = Application.builder().token(token).build()
 
