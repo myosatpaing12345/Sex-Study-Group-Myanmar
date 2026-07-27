@@ -199,9 +199,9 @@ async def receive_like_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # Main Function
 def main():
-    token = os.environ.get("8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw")
+    token = os.environ.get"8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"
     if not token:
-        logger.error("8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw")
+        logger.error"8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"
         return
 
     application = Application.builder().token(token).build()
