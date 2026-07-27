@@ -12,7 +12,7 @@ from telegram.ext import (
     filters,
 )
 
-# --- Render Web Service Port Scan Keep-Alive Server ---
+# --- Render Keep-Alive Web Server ---
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -28,7 +28,7 @@ def run_web_server():
 TOKEN = "8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"  # <--- သင့် Bot Token ကို ဒီမှာ ပြန်ထည့်ပါ
 
 # Conversation States
-GENDER, ASK_AGE_INPUT, LOCATION, PROFILE_NAME, INTEREST, PHOTO = range(6)
+GENDER, ASK_AGE_INPUT, LOCATION, PROFILE_NAME, INTEREST, MEDIA = range(6)
 
 # --- SQLite Database Setup ---
 def init_db():
@@ -43,7 +43,8 @@ def init_db():
             city TEXT,
             profile_name TEXT,
             interest TEXT,
-            photo_id TEXT
+            media_id TEXT,
+            media_type TEXT
         )
     ''')
     cursor.execute('''
@@ -61,8 +62,8 @@ def save_user_profile(user_id, username, data):
     conn = sqlite3.connect("match_bot.db")
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT OR REPLACE INTO users (user_id, username, gender, age, city, profile_name, interest, photo_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO users (user_id, username, gender, age, city, profile_name, interest, media_id, media_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         user_id,
         username,
@@ -71,7 +72,8 @@ def save_user_profile(user_id, username, data):
         data.get('city'),
         data.get('profile_name'),
         data.get('interest'),
-        data.get('photo_id')
+        data.get('media_id'),
+        data.get('media_type')
     ))
     conn.commit()
     conn.close()
@@ -79,7 +81,7 @@ def save_user_profile(user_id, username, data):
 def get_user_profile(user_id):
     conn = sqlite3.connect("match_bot.db")
     cursor = conn.cursor()
-    cursor.execute('SELECT gender, age, city, profile_name, interest, photo_id, username FROM users WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT gender, age, city, profile_name, interest, media_id, media_type, username FROM users WHERE user_id = ?', (user_id,))
     row = cursor.fetchone()
     conn.close()
     if row:
@@ -89,32 +91,37 @@ def get_user_profile(user_id):
             'city': row[2],
             'profile_name': row[3],
             'interest': row[4],
-            'photo_id': row[5],
-            'username': row[6]
+            'media_id': row[5],
+            'media_type': row[6],
+            'username': row[7]
         }
     return None
 
-# --- Registration Handlers ---
+def get_main_menu_keyboard():
+    keyboard = [["1 🚀", "2", "3"]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+async def send_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    menu_text = (
+        "1. View profiles.\n"
+        "2. My profile.\n"
+        "3. Edit profile."
+    )
+    await update.message.reply_text(menu_text, reply_markup=get_main_menu_keyboard())
+
+# --- Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     profile = get_user_profile(user_id)
+    
     if profile:
-        caption = (
-            f"Hello {profile['profile_name']}! You already have a profile.\n\n"
-            f"👤 Gender: {profile['gender']}\n"
-            f"🎂 Age: {profile['age']}\n"
-            f"📍 City: {profile['city']}\n"
-            f"🎯 Interest: {profile['interest']}\n\n"
-            f"Type /find to search for matches!"
-        )
-        if profile.get('photo_id'):
-            await update.message.reply_photo(photo=profile['photo_id'], caption=caption)
-        else:
-            await update.message.reply_text(caption)
+        await send_main_menu(update, context)
         return ConversationHandler.END
 
+    return await start_registration(update, context)
+
+async def start_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [["Male", "Female", "Other"]]
-    
     welcome_text = (
         "Welcome to Sex Study Group 🍷\n"
         "Everyone Sex partnerရှာလိုက်ကြရအောင်🤪💋\n\n"
@@ -126,9 +133,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ASK_AGE_INPUT
 
+async def send_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    profile = get_user_profile(user_id)
+    
+    if not profile:
+        await update.message.reply_text("Profile not found. Please type /start to register.")
+        return
+
+    caption = (
+        f"👤 **Your Profile**\n\n"
+        f"📝 Name: {profile['profile_name']}\n"
+        f"🚻 Gender: {profile['gender']}\n"
+        f"🎂 Age: {profile['age']}\n"
+        f"📍 City: {profile['city']}\n"
+        f"🎯 Interested in: {profile['interest']}"
+    )
+    
+    if profile.get('media_id'):
+        if profile.get('media_type') == 'video':
+            await update.message.reply_video(video=profile['media_id'], caption=caption, parse_mode='Markdown')
+        else:
+            await update.message.reply_photo(photo=profile['media_id'], caption=caption, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(caption, parse_mode='Markdown')
+
+    await send_main_menu(update, context)
+
 async def ask_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['gender'] = update.message.text
-    # English လို ပြောင်းထားပါသည်
     await update.message.reply_text("How old are you? (example- 18):", reply_markup=ReplyKeyboardRemove())
     return LOCATION
 
@@ -140,69 +173,71 @@ async def ask_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please enter numbers only for age (example- 18):")
         return LOCATION
 
-    # English လို ပြောင်းထားပါသည်
     await update.message.reply_text("Where do you live? (example- Yangon, Mandalay):")
     return PROFILE_NAME
 
 async def ask_profile_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['city'] = update.message.text
-    # English လို ပြောင်းထားပါသည်
     await update.message.reply_text("Enter your Profile Name (Nickname) to display in bot:")
     return INTEREST
 
 async def ask_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['profile_name'] = update.message.text
     reply_keyboard = [["Male", "Female", "Anyone"]]
-    # English လို ပြောင်းထားပါသည်
     await update.message.reply_text(
         "Who are you interested in?",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True),
     )
-    return PHOTO
+    return MEDIA
 
-async def ask_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ask_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['interest'] = update.message.text
-    # English လို ပြောင်းထားပါသည်
     await update.message.reply_text(
-        "📸 Send a profile photo (This will be shown to other users when matching):",
+        "📸 Send a Profile Photo or 📹 Video:",
         reply_markup=ReplyKeyboardRemove()
     )
     return 6
 
 async def complete_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.photo:
-        await update.message.reply_text("Please send a photo:")
+    if update.message.photo:
+        context.user_data['media_id'] = update.message.photo[-1].file_id
+        context.user_data['media_type'] = 'photo'
+    elif update.message.video:
+        context.user_data['media_id'] = update.message.video.file_id
+        context.user_data['media_type'] = 'video'
+    else:
+        await update.message.reply_text("Please send a Photo or Video:")
         return 6
 
-    photo_file = update.message.photo[-1].file_id
-    context.user_data['photo_id'] = photo_file
-    
     user = update.effective_user
     save_user_profile(user.id, user.username, context.user_data)
     
-    await update.message.reply_text(
-        "🎉 Profile setup successful!\nType /find to start searching for matches."
-    )
+    await update.message.reply_text("🎉 Profile setup successful!")
+    await send_main_menu(update, context)
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Cancelled.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Cancelled.")
+    await send_main_menu(update, context)
     return ConversationHandler.END
 
-# --- Find / Matching Handlers ---
+# --- Matching System ---
 async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_prof = get_user_profile(user_id)
     
     if not user_prof:
-        await update.message.reply_text("Please type /start to register first.")
+        await update.message.reply_text("Please register first.")
         return
+
+    # 1. ရှာဖွေနေချိန် ✨ 🔍 Emoji ပြသခြင်း
+    await update.message.reply_text("✨ 🔍")
 
     conn = sqlite3.connect("match_bot.db")
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT user_id, profile_name, gender, age, city, photo_id FROM users 
+        SELECT user_id, profile_name, gender, age, city, media_id, media_type FROM users 
         WHERE user_id != ? AND user_id NOT IN (
             SELECT target_id FROM matches WHERE user_id = ?
         ) LIMIT 1
@@ -213,40 +248,44 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not target:
         await update.message.reply_text("No new matches found at the moment. Please try again later!")
+        await send_main_menu(update, context)
         return
 
     context.user_data['current_target'] = target[0]
-    reply_keyboard = [["❤️ Like", "❌ Pass"]]
     
+    # 2. LeoMatch Style Action Keyboards
+    reply_keyboard = [["❤️", "💌 / 📹", "👎", "💤"]]
+    markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
+
     caption = (
-        f"✨ Target Profile ✨\n\n"
-        f"👤 Name: {target[1]}\n"
-        f"🚻 Gender: {target[2]}\n"
-        f"🎂 Age: {target[3]}\n"
-        f"📍 City: {target[4]}"
+        f"{target[1]}, {target[3]}, {target[4]}\n\n"
+        f"🚻 Gender: {target[2]}"
     )
 
-    if target[5]:
-        await update.message.reply_photo(
-            photo=target[5],
-            caption=caption,
-            reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
-        )
+    media_id = target[5]
+    media_type = target[6]
+
+    if media_id:
+        if media_type == 'video':
+            await update.message.reply_video(video=media_id, caption=caption, reply_markup=markup)
+        else:
+            await update.message.reply_photo(photo=media_id, caption=caption, reply_markup=markup)
     else:
-        await update.message.reply_text(
-            caption,
-            reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
-        )
+        await update.message.reply_text(caption, reply_markup=markup)
 
 async def handle_match_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
     target_id = context.user_data.get('current_target')
 
-    if not target_id or text not in ["❤️ Like", "❌ Pass"]:
+    if text == "💤":
+        await send_main_menu(update, context)
         return
 
-    action = "like" if text == "❤️ Like" else "pass"
+    if not target_id or text not in ["❤️", "💌 / 📹", "👎"]:
+        return
+
+    action = "like" if text in ["❤️", "💌 / 📹"] else "pass"
     
     conn = sqlite3.connect("match_bot.db")
     cursor = conn.cursor()
@@ -260,15 +299,8 @@ async def handle_match_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             user_prof = get_user_profile(user_id)
             target_prof = get_user_profile(target_id)
             
-            if user_prof.get('username'):
-                user_link = f"https://t.me/{user_prof['username']}"
-            else:
-                user_link = f"tg://user?id={user_id}"
-                
-            if target_prof.get('username'):
-                target_link = f"https://t.me/{target_prof['username']}"
-            else:
-                target_link = f"tg://user?id={target_id}"
+            user_link = f"https://t.me/{user_prof['username']}" if user_prof.get('username') else f"tg://user?id={user_id}"
+            target_link = f"https://t.me/{target_prof['username']}" if target_prof.get('username') else f"tg://user?id={target_id}"
 
             msg_for_me = (
                 f"🎉 **Match Successful!** 🎉\n\n"
@@ -301,21 +333,26 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+            MessageHandler(filters.Regex("^3$"), start_registration)
+        ],
         states={
             ASK_AGE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_age)],
             LOCATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_location)],
             PROFILE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_profile_name)],
             INTEREST: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_interest)],
-            PHOTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_photo)],
-            6: [MessageHandler(filters.PHOTO, complete_registration)],
+            MEDIA: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_media)],
+            6: [MessageHandler(filters.PHOTO | filters.VIDEO, complete_registration)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("find", find_match))
-    app.add_handler(MessageHandler(filters.Regex("^(❤️ Like|❌ Pass)$"), handle_match_action))
+    app.add_handler(MessageHandler(filters.Regex("^1 🚀$"), find_match))
+    app.add_handler(MessageHandler(filters.Regex("^2$"), send_my_profile))
+    app.add_handler(MessageHandler(filters.Regex("^(❤️|💌 / 📹|👎|💤)$"), handle_match_action))
 
     print("Bot is running...")
     app.run_polling()
