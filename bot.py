@@ -1,28 +1,39 @@
 import os
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+)
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-# Logging setup
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# Enable logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
-# Database URL ယူရန် (Render Environment မှ)
+# Database Connection (Render PostgreSQL သို့မဟုတ် URL သုံးရန်)
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db_connection():
-    if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-        url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    else:
-        url = DATABASE_URL
-    return psycopg2.connect(url, cursor_factory=RealDictCursor)
+    if not DATABASE_URL:
+        return None
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
-# Database Tables ဖန်တီးရန်
+# Database Table များ ဖန်တီးခြင်း
 def init_db():
     conn = get_db_connection()
+    if not conn:
+        logger.error("DATABASE_URL not found!")
+        return
     cur = conn.cursor()
+    # Users Table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
@@ -31,8 +42,9 @@ def init_db():
             target_gender TEXT,
             bio TEXT,
             media_id TEXT,
-            media_type TEXT
-        );
+            media_type TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
     """)
     conn.commit()
     cur.close()
@@ -40,176 +52,165 @@ def init_db():
 
 init_db()
 
-# User Profile ထုတ်ရန် Helper Function
+# User Profile ရှာရန် Helper Function
 def get_user_profile(user_id):
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE user_id = %s;", (user_id,))
-        user = cur.fetchone()
-        cur.close()
-        conn.close()
-        return user
-    except Exception as e:
-        logger.error(f"Database Error: {e}")
+    conn = get_db_connection()
+    if not conn:
         return None
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+    return user
 
 # /start Command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     
+    # Database ထဲမှာ ရှိပြီးသားလား စစ်မည်
     user_prof = get_user_profile(user_id)
     
-    if user_prof:
-        # Profile ရှိပြီးသားဆိုရင် LeoMatch ပုံစံ Menu ပြမည်
-        keyboard = [
-            [InlineKeyboardButton("🔍 Find Partner (Match)", callback_data="find_match")],
-            [InlineKeyboardButton("👤 My Profile", callback_data="view_profile")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+    if user_prof and user_prof.get('profile_name'):
+        # Profile ရှိပြီးသားဆိုရင် Welcome ပြန်လုပ်မည်
         await update.message.reply_text(
-            f"Welcome back, **{user_prof['profile_name']}**!🍷\nEveryone Sex partnerရှာလိုက်ကြရအောင်😜💋\n\nChoose an option:",
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
+            f"Welcome back, {user_prof['profile_name']}! 🎉\nသင်၏ Profile အဆင်သင့် ဖြစ်နေပါပြီ။",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔍 Match ရှာမည်", callback_data="find_match")]
+            ])
         )
-    else:
-        # Profile မရှိသေးရင် အသစ်စဆောက်မည်
-        keyboard = [
-            [InlineKeyboardButton("Male 👨", callback_data="reg_male"),
-             InlineKeyboardButton("Female 👩", callback_data="reg_female")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "Welcome to Sex Study Group🍷\nEveryone Sex partnerရှာလိုက်ကြရအောင်😜💋\n\nChoose your Gender",
-            reply_markup=reply_markup
-        )
+        return
 
-# Gender ရွေးချယ်ခြင်း Handler
+    # အသစ်ဆိုရင် Gender ရွေးခိုင်းမည်
+    keyboard = [
+        [InlineKeyboardButton("👨 Male (ကျား)", callback_data="reg_male")],
+        [InlineKeyboardButton("👩 Female (မ)", callback_data="reg_female")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "👋 မင်္ဂလာပါ LeoMatch မှ ကြိုဆိုပါတယ်။\nစတင်ရန် ကျေးဇူးပြု၍ သင်၏ ကျား/မ ကို ရွေးချယ်ပါ -",
+        reply_markup=reply_markup
+    )
+
+# Gender ရွေးချယ်မှု Handler
 async def gender_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    data = query.data
     user_id = query.from_user.id
+    gender = query.data.split("_")[1] # male or female
     
-    if data in ["reg_male", "reg_female"]:
-        gender = "Male" if data == "reg_male" else "Female"
-        context.user_data['gender'] = gender
-        
-        await query.message.edit_text("Enter your Profile Name (Nickname) to display in bot:")
-        context.user_data['state'] = "WAITING_NAME"
+    # Temporary State သိမ်းရန်
+    context.user_data['reg_gender'] = gender
+    
+    # Target Gender ရွေးခိုင်းရန်
+    keyboard = [
+        [InlineKeyboardButton("👨 Male (ကျား)", callback_data="target_male")],
+        [InlineKeyboardButton("👩 Female (မ)", callback_data="target_female")],
+        [InlineKeyboardButton("🌐 Anyone (အားလုံး)", callback_data="target_any")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.edit_text(
+        "🎯 သင် ဘယ်သူတွေကို ရှာချင်ပါသလဲ?",
+        reply_markup=reply_markup
+    )
 
-# Message များကို လက်ခံစစ်ဆေးခြင်း (Registration & Messages)
+# Target ရွေးချယ်မှု Handler
+async def target_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    target = query.data.split("_")[1] # male, female, any
+    
+    context.user_data['reg_target'] = target
+    
+    await query.message.edit_text(
+        "✍️ ကျေးဇူးပြု၍ သင်၏ **နာမည် (Profile Name)** ကို ရိုက်ထည့်ပေးပါ။"
+    )
+    context.user_data['step'] = 'waiting_name'
+
+# Text / Media Handler
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    state = context.user_data.get('state')
+    step = context.user_data.get('step')
     
-    if state == "WAITING_NAME":
-        profile_name = update.message.text
-        context.user_data['profile_name'] = profile_name
+    if step == 'waiting_name':
+        name = update.message.text
+        context.user_data['reg_name'] = name
+        context.user_data['step'] = 'waiting_media'
         
-        keyboard = [
-            [InlineKeyboardButton("Male 👨", callback_data="target_male"),
-             InlineKeyboardButton("Female 👩", callback_data="target_female")],
-            [InlineKeyboardButton("Everyone 🔥", callback_data="target_everyone")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Who are you interested in?", reply_markup=reply_markup)
-        context.user_data['state'] = "WAITING_TARGET"
+        await update.message.reply_text(
+            "📸 ကျေးဇူးပြု၍ သင်၏ **ဓာတ်ပုံ သို့မဟုတ် ဗီဒီယို** တစ်ခု ပို့ပေးပါ။"
+        )
+        return
         
-    elif state == "WAITING_MEDIA":
-        # Photo သို့မဟုတ် Video ပို့သည်ကို စစ်ဆေးခြင်း
+    elif step == 'waiting_media':
         media_id = None
         media_type = None
         
         if update.message.photo:
             media_id = update.message.photo[-1].file_id
-            media_type = "photo"
+            media_type = 'photo'
         elif update.message.video:
             media_id = update.message.video.file_id
-            media_type = "video"
+            media_type = 'video'
         else:
-            await update.message.reply_text("📸 Send a Profile Photo or 🎬 Video:")
+            await update.message.reply_text("⚠️ ကျေးဇူးပြု၍ ဓာတ်ပုံ (သို့) ဗီဒီယိုသာ ပို့ပေးပါ။")
             return
             
-        gender = context.user_data.get('gender')
-        profile_name = context.user_data.get('profile_name')
-        target_gender = context.user_data.get('target_gender')
+        # အချက်အလက်များကို Database ထဲသို့ သိမ်းမည်
+        gender = context.user_data.get('reg_gender')
+        target = context.user_data.get('reg_target')
+        name = context.user_data.get('reg_name')
         
-        # Database ထဲသို့ အချက်အလက်များ သိမ်းဆည်းခြင်း
-        try:
-            conn = get_db_connection()
+        conn = get_db_connection()
+        if conn:
             cur = conn.cursor()
             cur.execute("""
                 INSERT INTO users (user_id, profile_name, gender, target_gender, media_id, media_type)
                 VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id) DO UPDATE 
-                SET profile_name = EXCLUDED.profile_name,
-                    gender = EXCLUDED.gender,
-                    target_gender = EXCLUDED.target_gender,
-                    media_id = EXCLUDED.media_id,
-                    media_type = EXCLUDED.media_type;
-            """, (user_id, profile_name, gender, target_gender, media_id, media_type))
+                ON CONFLICT (user_id) DO UPDATE SET
+                profile_name = EXCLUDED.profile_name,
+                gender = EXCLUDED.gender,
+                target_gender = EXCLUDED.target_gender,
+                media_id = EXCLUDED.media_id,
+                media_type = EXCLUDED.media_type
+            """, (user_id, name, gender, target, media_id, media_type))
             conn.commit()
             cur.close()
             conn.close()
-        except Exception as e:
-            logger.error(f"DB Save Error: {e}")
-            await update.message.reply_text("Database Error ဖြစ်သွားပါသည်၊ /start ဖြင့် ပြန်စမ်းပါ။")
-            return
             
-        context.user_data['state'] = None
+        # Clear step
+        context.user_data.clear()
         
-        keyboard = [
-            [InlineKeyboardButton("🔍 Find Partner (Match)", callback_data="find_match")],
-            [InlineKeyboardButton("👤 My Profile", callback_data="view_profile")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("✅ Profile Created Successfully! 🎉", reply_markup=reply_markup)
-
-# Target Gender ရွေးချယ်ခြင်း
-async def target_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    if "target_" in data:
-        target = data.replace("target_", "")
-        context.user_data['target_gender'] = target
-        
-        await query.message.edit_text("📸 Send a Profile Photo or 🎬 Video:")
-        context.user_data['state'] = "WAITING_MEDIA"
-
-# Like Message သို့မဟုတ် Match ပြုလုပ်ခြင်း Callback များနှင့် Crash မဖြစ်အောင် Safety Check
-async def receive_like_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = update.effective_user.id
-    user_prof = get_user_profile(user_id)
-    
-    # ⚠️ Profile မရှိရင် Bot Crash မသွားအောင် Safety Check
-    if not user_prof:
-        await query.message.reply_text("သင်၏ Profile အချက်အလက် မရှိတော့ပါ သို့မဟုတ် Database ပြောင်းသွားပါသည်။ ကျေးဇူးပြု၍ /start နှိပ်၍ Profile အသစ် ပြန်ဆောက်ပေးပါ။")
+        await update.message.reply_text(
+            "✅ သင်၏ Profile ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ! 🎉",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔍 Match ရှာမည်", callback_data="find_match")]
+            ])
+        )
         return
 
-    profile_name = user_prof.get('profile_name', 'Anonymous')
-    await query.message.reply_text(f"Welcome back, {profile_name}!")
+    # Safety Fallback
+    user_prof = get_user_profile(user_id)
+    if not user_prof:
+        await update.message.reply_text("⚠️ သင်၏ Profile မရှိသေးပါ။ /start ကိုနှိပ်ပြီး အစကနေ စတင်ပါ။")
+        return
 
 # Main Function
 def main():
-    token = os.environ.get"8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"
-    if not token:
-        logger.error"8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"
-        return
+    # ⚠️ ဒီနေရာမှာ သင့်ရဲ့ Bot Token ကို ထည့်ပါ (Quotation mark မပျောက်စေနဲ့)
+    token = "8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"
 
     application = Application.builder().token(token).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(gender_handler, pattern="^reg_"))
     application.add_handler(CallbackQueryHandler(target_handler, pattern="^target_"))
-    application.add_handler(CallbackQueryHandler(receive_like_message, pattern="^find_match$"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_message))
 
