@@ -23,12 +23,6 @@ logger = logging.getLogger(__name__)
 # Database Connection (Render PostgreSQL သို့မဟုတ် URL သုံးရန်)
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# ADMIN ID (Broadcast လုပ်ရန် Admin ၏ Telegram User ID ထည့်ရန်)
-ADMIN_ID = 123456789  # <--- သင်၏ Telegram User ID
-
-# Channel Username (သို့မဟုတ် ID) - Bot ကို ဤ Channel တွင် Admin ခန့်ထားရမည်
-CHANNEL_USERNAME = "@Sexstudygroupoffical_bot" # 
-
 def get_db_connection():
     if not DATABASE_URL:
         return None
@@ -48,8 +42,6 @@ def init_db():
             profile_name TEXT,
             gender TEXT,
             target_gender TEXT,
-            age INTEGER,
-            city TEXT,
             bio TEXT,
             media_id TEXT,
             media_type TEXT,
@@ -92,83 +84,11 @@ def get_main_menu():
          InlineKeyboardButton("⚙️ Edit Profile", callback_data="edit_profile")]
     ])
 
-# --- Channel Membership Check Helper ---
-async def check_user_channel(bot, user_id):
-    try:
-        member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
-        # member.status က creator, administrator, member ဖြစ်မှ Join ပြီးသားဟု သတ်မှတ်မည်
-        if member.status in ['creator', 'administrator', 'member']:
-            return True
-    except Exception as e:
-        logger.error(f"Error checking channel membership: {e}")
-    return False
-
-# /start Command (Channel Join စစ်ဆေးခြင်း)
+# /start Command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     
-    # Channel Join ပြီးပြီလား စစ်မည်
-    is_member = await check_user_channel(context.bot, user_id)
-    
-    if not is_member:
-        keyboard = [
-            [InlineKeyboardButton("📢 Join Official Channel", url="https://t.me/Sexstudygroupoffical_bot")],
-            [InlineKeyboardButton("✅ Check Subscription", callback_data="check_sub")]
-        ]
-        await update.message.reply_text(
-            "📢 Bot ကို အသုံးပြုရန် Official Channel ကို အရင် Join လုပ်ပေးပါ။\n\nJoin ပြီးလျှင် Check Subscription ကို နှိပ်ပါ၊၊",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # Join ပြီးသားဆိုရင် ပုံမှန်အတိုင်း ရှေ့ဆက်မည်
-    await proceed_after_subscription(update, context)
-
-# Check Subscription Button Handler
-async def check_subscription_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    
-    is_member = await check_user_channel(context.bot, user_id)
-    
-    if not is_member:
-        await query.message.answer_query if hasattr(query, 'answer_query') else None
-        await query.message.edit_text(
-            "⚠️ ကျေးဇူးပြု၍ Channel ကို မ join ရသေးပါက အရင် Join ပေးပါရန်။\n\nJoin ပြီးမှ Check Subscription ကို ထပ်နှိပ်ပါ။",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📢 Join Official Channel", url="https://t.me/Sexstudygroupoffical_bot")],
-                [InlineKeyboardButton("✅ Check Subscription", callback_data="check_sub")]
-            ])
-        )
-        return
-
-    # Join ပြီးသွားပြီဆိုရင် Message အဟောင်းကို ဖျက်ပြီး start ပုံစံအတိုင်း ဆက်သွားမည်
-    await query.message.delete()
-    
-    # ယာယီ update object ပုံစံဖြင့် start လုပ်ငန်းစဥ်ကို ဆက်လုပ်ရန်
-    user_prof = get_user_profile(user_id)
-    if user_prof and user_prof.get('profile_name'):
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=f"Welcome back, {user_prof['profile_name']}! 🎉\nသင်၏ Profile အဆင်သင့် ဖြစ်နေပါပြီ။",
-            reply_markup=get_main_menu()
-        )
-        return
-
-    keyboard = [
-        [InlineKeyboardButton("👨 Male (ကျား)", callback_data="reg_male")],
-        [InlineKeyboardButton("👩 Female (မ)", callback_data="reg_female")]
-    ]
-    await context.bot.send_message(
-        chat_id=user_id,
-        text="👋 မင်္ဂလာပါ LeoMatch မှ ကြိုဆိုပါတယ်။\nစတင်ရန် ကျေးဇူးပြု၍ သင်၏ ကျား/မ ကို ရွေးချယ်ပါ -",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-async def proceed_after_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
     user_prof = get_user_profile(user_id)
     
     if user_prof and user_prof.get('profile_name'):
@@ -178,6 +98,7 @@ async def proceed_after_subscription(update: Update, context: ContextTypes.DEFAU
         )
         return
 
+    # အသစ်ဆိုရင် Gender ရွေးခိုင်းမည်
     keyboard = [
         [InlineKeyboardButton("👨 Male (ကျား)", callback_data="reg_male")],
         [InlineKeyboardButton("👩 Female (မ)", callback_data="reg_female")]
@@ -194,7 +115,7 @@ async def gender_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    gender = query.data.split("_")[1]
+    gender = query.data.split("_")[1] # male or female
     context.user_data['reg_gender'] = gender
     
     keyboard = [
@@ -209,18 +130,18 @@ async def gender_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-# Target ရွေးချယ်ပြီးပါက Age (အသက်) မေးရန်
+# Target ရွေးချယ်မှု Handler
 async def target_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    target = query.data.split("_")[1]
+    target = query.data.split("_")[1] # male, female, any
     context.user_data['reg_target'] = target
     
     await query.message.edit_text(
-        "🎂 ကျေးဇူးပြု၍ သင်၏ **အသက် (Age)** ကို နံပါတ်ဖြင့် ရိုက်ထည့်ပေးပါ။ (ဥပမာ - 20)"
+        "✍️ ကျေးဇူးပြု၍ သင်၏ **နာမည် (Profile Name)** ကို ရိုက်ထည့်ပေးပါ။"
     )
-    context.user_data['step'] = 'waiting_age'
+    context.user_data['step'] = 'waiting_name'
 
 # My Profile ပြသရန်
 async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -237,10 +158,7 @@ async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 **Your Profile**\n\n"
         f"📝 Name: {user_prof['profile_name']}\n"
         f"🚻 Gender: {user_prof['gender']}\n"
-        f"🎯 Target: {user_prof['target_gender']}\n"
-        f"🎂 Age: {user_prof.get('age', 'မထည့်ရသေးပါ')}\n"
-        f"📍 City: {user_prof.get('city', 'မထည့်ရသေးပါ')}\n"
-        f"💬 Bio: {user_prof.get('bio', 'မရှိပါ')}"
+        f"🎯 Target: {user_prof['target_gender']}"
     )
     
     if user_prof.get('media_id'):
@@ -251,7 +169,7 @@ async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.message.reply_text(caption, parse_mode='Markdown', reply_markup=get_main_menu())
 
-# Edit Profile
+# Edit Profile (အစကနေ ပြန်မှတ်ရန်)
 async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -281,6 +199,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     cur = conn.cursor()
     
+    # မိမိနဲ့ မတူတဲ့သူ (သို့မဟုတ် target ကိုက်ညီသူ) ကို ရှာမည်
     cur.execute("""
         SELECT * FROM users 
         WHERE user_id != %s AND user_id NOT IN (
@@ -308,12 +227,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
     ]
     
-    caption = (
-        f"👤 **{target['profile_name']}**\n"
-        f"🚻 Gender: {target['gender']} | 🎂 Age: {target.get('age', 'N/A')}\n"
-        f"📍 City: {target.get('city', 'N/A')}\n\n"
-        f"💬 Bio: {target.get('bio', 'မရှိပါ')}"
-    )
+    caption = f"👤 **{target['profile_name']}**\n🚻 Gender: {target['gender']}"
     
     if target.get('media_id'):
         if target.get('media_type') == 'video':
@@ -323,7 +237,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.message.reply_text(caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
-# Match Actions
+# Match Actions (Like / Pass / Message)
 async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -337,6 +251,7 @@ async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     if action_type == "match_pass":
+        # Pass လုပ်လျှင် Matches ထဲ မှတ်မည်
         conn = get_db_connection()
         if conn:
             cur = conn.cursor()
@@ -344,6 +259,7 @@ async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             conn.commit()
             cur.close()
             conn.close()
+        # နောက်တစ်ယောက် ဆက်ရှာမည်
         await find_match(update, context)
         return
 
@@ -365,6 +281,7 @@ async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     cur.execute("INSERT INTO matches (user_id, target_id, action, message_text) VALUES (%s, %s, %s, %s) ON CONFLICT (user_id, target_id) DO UPDATE SET action = %s, message_text = %s", 
                 (user_id, target_id, action, custom_msg, action, custom_msg))
     
+    # ဟိုဘက်လူကလည်း ပြန် Like ထားသလား စစ်မည်
     cur.execute("SELECT action FROM matches WHERE user_id = %s AND target_id = %s", (target_id, user_id))
     mutual = cur.fetchone()
     
@@ -375,6 +292,7 @@ async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     cur.close()
     conn.close()
 
+    # Notification ပို့မည်
     if custom_msg:
         notify_text = f"💌 **{user_prof['profile_name']} ထံမှ Like နှင့် မက်ဆေ့ချ် ရရှိထားပါသည်!**\n\n💬 Message: _{custom_msg}_"
     else:
@@ -385,8 +303,9 @@ async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     except Exception:
         pass
 
+    # Mutual Match ဖြစ်သွားလျှင် (နှစ်ဖက်လုံး Like လျှင်)
     if mutual and mutual['action'] == 'like':
-        match_msg = f"🎉 **Match Successful!** 🎉\n\nသင်နှင့် **{target_prof['profile_name']}** တို့ အပြန်အလှန် သဘောကျကြပါပြီ။"
+        match_msg = f"🎉 **Match Successful!** 🎉\n\nသင်နှင့် **{target_prof['profile_name']}** တို့ အتبအလှန် သဘောကျကြပါပြီ။"
         try:
             await update.effective_chat.send_message(match_msg)
             await context.bot.send_message(chat_id=target_id, text=match_msg)
@@ -395,62 +314,19 @@ async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
 
     await find_match(update, context)
 
-# Admin Broadcast Command
-async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("⚠️ ဤ Command သည် Admin အတွက်သာ ဖြစ်ပါသည်။")
-        return
-
-    context.user_data['step'] = 'waiting_broadcast_msg'
-    await update.message.reply_text("📢 အများပြည်သူသို့ ပို့လိုသော ကြေညာချက် စာသား သို့မဟုတ် ပုံကို ပို့ပေးပါ။")
-
-# Text / Media / Registration Step Handler
+# Text / Media / Message Handler
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
-    # စာမပို့ခင် Channel Join ပြီးသားလား အမြဲစစ်မည်
-    is_member = await check_user_channel(context.bot, user_id)
-    if not is_member:
-        keyboard = [
-            [InlineKeyboardButton("📢 Join Official Channel", url="https://t.me/Sexstudygroupoffical_bot")],
-            [InlineKeyboardButton("✅ Check Subscription", callback_data="check_sub")]
-        ]
-        await update.message.reply_text(
-            "📢 Bot ကို အသုံးပြုရန် Official Channel ကို အရင် Join လုပ်ပေးပါ။\n\nJoin ပြီးလျှင် Check Subscription ကို နှိပ်ပါ၊၊",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
     step = context.user_data.get('step')
     
-    if step == 'waiting_age':
-        try:
-            age = int(update.message.text)
-            context.user_data['reg_age'] = age
-            context.user_data['step'] = 'waiting_city'
-            await update.message.reply_text("📍 သင်နေထိုင်ရာ မြို့ (City) ကို ရိုက်ထည့်ပေးပါ။ (ဥပမာ - Yangon)")
-        except ValueError:
-            await update.message.reply_text("⚠️ ကျေးဇူးပြု၍ အသက်ကို နံပါတ်သီးသန့် (ဥပမာ - 20) ဖြင့်သာ ရိုက်ထည့်ပါ။")
-        return
-
-    elif step == 'waiting_city':
-        context.user_data['reg_city'] = update.message.text
-        context.user_data['step'] = 'waiting_name'
-        await update.message.reply_text("✍️ ကျေးဇူးပြု၍ သင်၏ **နာမည် (Profile Name)** ကို ရိုက်ထည့်ပေးပါ။")
-        return
-
-    elif step == 'waiting_name':
-        context.user_data['reg_name'] = update.message.text
-        context.user_data['step'] = 'waiting_bio'
-        await update.message.reply_text("💬 သင်အကြောင်း အတိုချုံး (Bio) တစ်ခုလောက် ရေးပြပေးပါ (သို့မဟုတ် ကျော်သွားချင်ရင် 'No' လို့ ရိုက်ပါ)။")
-        return
-
-    elif step == 'waiting_bio':
-        bio_text = update.message.text
-        context.user_data['reg_bio'] = "" if bio_text.lower() == 'no' else bio_text
+    if step == 'waiting_name':
+        name = update.message.text
+        context.user_data['reg_name'] = name
         context.user_data['step'] = 'waiting_media'
-        await update.message.reply_text("📸 ကျေးဇူးပြု၍ သင်၏ **ဓာတ်ပုံ သို့မဟုတ် ဗီဒီယို** တစ်ခု ပို့ပေးပါ။")
+        
+        await update.message.reply_text(
+            "📸 ကျေးဇူးပြု၍ သင်၏ **ဓာတ်ပုံ သို့မဟုတ် ဗီဒီယို** တစ်ခု ပို့ပေးပါ။"
+        )
         return
         
     elif step == 'waiting_media':
@@ -469,27 +345,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         gender = context.user_data.get('reg_gender')
         target = context.user_data.get('reg_target')
-        age = context.user_data.get('reg_age')
-        city = context.user_data.get('reg_city')
         name = context.user_data.get('reg_name')
-        bio = context.user_data.get('reg_bio')
         
         conn = get_db_connection()
         if conn:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO users (user_id, profile_name, gender, target_gender, age, city, bio, media_id, media_type)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO users (user_id, profile_name, gender, target_gender, media_id, media_type)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (user_id) DO UPDATE SET
                 profile_name = EXCLUDED.profile_name,
                 gender = EXCLUDED.gender,
                 target_gender = EXCLUDED.target_gender,
-                age = EXCLUDED.age,
-                city = EXCLUDED.city,
-                bio = EXCLUDED.bio,
                 media_id = EXCLUDED.media_id,
                 media_type = EXCLUDED.media_type
-            """, (user_id, name, gender, target, age, city, bio, media_id, media_type))
+            """, (user_id, name, gender, target, media_id, media_type))
             conn.commit()
             cur.close()
             conn.close()
@@ -510,21 +380,46 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await process_like(update, context, user_id, target_id, "like", custom_msg=msg_text)
         return
 
-    elif step == 'waiting_broadcast_msg':
-        context.user_data.pop('step', None)
-        conn = get_db_connection()
-        if not conn:
-            return
-        cur = conn.cursor()
-        cur.execute("SELECT user_id FROM users")
-        all_users = cur.fetchall()
-        cur.close()
-        conn.close()
+    user_prof = get_user_profile(user_id)
+    if not user_prof:
+        await update.message.reply_text("⚠️ သင်၏ Profile မရှိသေးပါ။ /start ကိုနှိပ်ပါ။")
+        return
 
-        success_count = 0
-        for u in all_users:
-            try:
-                if update.message.photo:
-                    await context.bot.send_photo(chat_id=u['user_id'], photo=update.message.photo[-1].file_id, caption=update.message.caption)
-                elif update.message.video:
-                    await context.bot.send_video(chat_id=u['user_id'], video=update.message.video.fil
+# Render အတွက် Dummy Web Server (Port ပြဿနာ ဖြေရှင်းရန်)
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
+
+# Main Function
+def main():
+    server_thread = threading.Thread(target=run_web_server, daemon=True)
+    server_thread.start()
+
+    token = "8905518813:AAHZhj8kzWxxfmti86Sai5xnZIyv6fZU7tQ"
+
+    application = Application.builder().token(token).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(gender_handler, pattern="^reg_"))
+    application.add_handler(CallbackQueryHandler(target_handler, pattern="^target_"))
+    application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
+    application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
+    application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
+    application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
+    
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_message))
+
+    print("Bot is running...")
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
+
