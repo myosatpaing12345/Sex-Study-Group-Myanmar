@@ -28,7 +28,7 @@ def run_web_server():
 TOKEN = "8905518813:AAFLofvwp-CrznhC8SEk4rjH2OGoEUb2Taw"  # <--- သင့် Bot Token ကို ဒီမှာ ပြန်ထည့်ပါ
 
 # Conversation States
-GENDER, ASK_AGE_INPUT, LOCATION, PROFILE_NAME, INTEREST, MEDIA = range(6)
+GENDER, ASK_AGE_INPUT, LOCATION, PROFILE_NAME, INTEREST, MEDIA, SEND_MESSAGE_LIKE = range(7)
 
 # --- SQLite Database Setup ---
 def init_db():
@@ -52,6 +52,7 @@ def init_db():
             user_id INTEGER,
             target_id INTEGER,
             action TEXT,
+            message_text TEXT,
             PRIMARY KEY (user_id, target_id)
         )
     ''')
@@ -230,7 +231,6 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please register first.")
         return
 
-    # 1. ရှာဖွေနေချိန် ✨ 🔍 Emoji ပြသခြင်း
     await update.message.reply_text("✨ 🔍")
 
     conn = sqlite3.connect("match_bot.db")
@@ -249,11 +249,10 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not target:
         await update.message.reply_text("No new matches found at the moment. Please try again later!")
         await send_main_menu(update, context)
-        return
+        return ConversationHandler.END
 
     context.user_data['current_target'] = target[0]
     
-    # 2. LeoMatch Style Action Keyboards
     reply_keyboard = [["❤️", "💌 / 📹", "👎", "💤"]]
     markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
 
@@ -280,16 +279,47 @@ async def handle_match_action(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if text == "💤":
         await send_main_menu(update, context)
-        return
+        return ConversationHandler.END
 
-    if not target_id or text not in ["❤️", "💌 / 📹", "👎"]:
-        return
+    if text == "💌 / 📹":
+        await update.message.reply_text(
+            "📝 Write a message or send a Video/Voice message to send with your Like:\n(Or send /cancel to go back)",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return SEND_MESSAGE_LIKE
 
-    action = "like" if text in ["❤️", "💌 / 📹"] else "pass"
+    action = "like" if text == "❤️" else "pass"
+    await process_like_or_pass(update, context, user_id, target_id, action)
+    return ConversationHandler.END
+
+async def receive_like_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    target_id = context.user_data.get('current_target')
     
+    user_prof = get_user_profile(user_id)
+    
+    # Message notification sent to target user
+    msg_text = update.message.text if update.message.text else "Sent a video/media message!"
+    
+    notify_text = f"💌 **Someone liked your profile with a message!**\n\nFrom: **{user_prof['profile_name']}**\nMessage: _{msg_text}_"
+    
+    try:
+        if update.message.video:
+            await context.bot.send_video(chat_id=target_id, video=update.message.video.file_id, caption=notify_text, parse_mode='Markdown')
+        elif update.message.voice:
+            await context.bot.send_voice(chat_id=target_id, voice=update.message.voice.file_id, caption=notify_text, parse_mode='Markdown')
+        else:
+            await context.bot.send_message(chat_id=target_id, text=notify_text, parse_mode='Markdown')
+    except Exception:
+        pass
+
+    await process_like_or_pass(update, context, user_id, target_id, "like", msg_text)
+    return ConversationHandler.END
+
+async def process_like_or_pass(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id, target_id, action, custom_msg=""):
     conn = sqlite3.connect("match_bot.db")
     cursor = conn.cursor()
-    cursor.execute('INSERT OR REPLACE INTO matches (user_id, target_id, action) VALUES (?, ?, ?)', (user_id, target_id, action))
+    cursor.execute('INSERT OR REPLACE INTO matches (user_id, target_id, action, message_text) VALUES (?, ?, ?, ?)', (user_id, target_id, action, custom_msg))
     
     if action == "like":
         cursor.execute('SELECT action FROM matches WHERE user_id = ? AND target_id = ?', (target_id, user_id))
@@ -335,7 +365,9 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            MessageHandler(filters.Regex("^3$"), start_registration)
+            MessageHandler(filters.Regex("^3$"), start_registration),
+            MessageHandler(filters.Regex("^1 🚀$"), find_match),
+            CommandHandler("find", find_match)
         ],
         states={
             ASK_AGE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_age)],
@@ -344,13 +376,12 @@ def main():
             INTEREST: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_interest)],
             MEDIA: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_media)],
             6: [MessageHandler(filters.PHOTO | filters.VIDEO, complete_registration)],
+            SEND_MESSAGE_LIKE: [MessageHandler(filters.TEXT | filters.VIDEO | filters.VOICE, receive_like_message)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     app.add_handler(conv_handler)
-    app.add_handler(CommandHandler("find", find_match))
-    app.add_handler(MessageHandler(filters.Regex("^1 🚀$"), find_match))
     app.add_handler(MessageHandler(filters.Regex("^2$"), send_my_profile))
     app.add_handler(MessageHandler(filters.Regex("^(❤️|💌 / 📹|👎|💤)$"), handle_match_action))
 
@@ -359,4 +390,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
