@@ -110,23 +110,11 @@ async def handle_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     age_text = update.message.text
     context.user_data['reg_age'] = age_text
     
-    user_id = update.effective_user.id
-    user_prof = get_user_profile(user_id)
-    
-    if user_prof and user_prof.get('gender'):
-        saved_gender = user_prof.get('gender')
-        gender_label = "👨 Male" if saved_gender == "male" else "👩 Female"
-        reply_markup = ReplyKeyboardMarkup(
-            [[KeyboardButton(gender_label)]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
-    else:
-        reply_markup = ReplyKeyboardMarkup(
-            [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
+    reply_markup = ReplyKeyboardMarkup(
+        [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
     
     await update.message.reply_text(
         "To get started, please select your gender:",
@@ -146,29 +134,13 @@ async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     context.user_data['reg_gender'] = gender
     
-    user_id = update.effective_user.id
-    user_prof = get_user_profile(user_id)
-    
-    if user_prof and user_prof.get('target_gender'):
-        saved_target = user_prof.get('target_gender')
-        if saved_target == "male":
-            target_label = "👨 Male"
-        elif saved_target == "female":
-            target_label = "👩 Female"
-        else:
-            target_label = "🌐 Anyone"
-        reply_markup = ReplyKeyboardMarkup(
-            [[KeyboardButton(target_label)]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
-    else:
-        reply_markup = ReplyKeyboardMarkup(
-            [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")],
-             [KeyboardButton("🌐 Anyone")]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
+    # "Anyone" ကို "No matter" သို့ ပြောင်းလဲထားသည်
+    reply_markup = ReplyKeyboardMarkup(
+        [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")],
+         [KeyboardButton("🌐 No matter")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
     
     await update.message.reply_text(
         "🎯 Who are you looking for?",
@@ -183,7 +155,7 @@ async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         target = "male"
     elif "Female" in text:
         target = "female"
-    elif "Anyone" in text:
+    elif "No matter" in text:
         target = "any"
     else:
         return
@@ -399,7 +371,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     elif step == 'waiting_target':
-        if "Male" in text or "Female" in text or "Anyone" in text:
+        if "Male" in text or "Female" in text or "No matter" in text:
             await target_text_handler(update, context)
         return
 
