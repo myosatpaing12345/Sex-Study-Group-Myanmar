@@ -355,6 +355,74 @@ async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
 
     await find_match(update, context)
 
+async def handle_media_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    step = context.user_data.get('step')
+    
+    if step != 'waiting_media':
+        return
+
+    text = update.message.text if update.message.text else ""
+    media_id = None
+    media_type = 'photo'
+    
+    if "Leave current" in text:
+        user_prof = get_user_profile(user_id)
+        if user_prof and user_prof.get('media_id'):
+            media_id = user_prof.get('media_id')
+            media_type = user_prof.get('media_type', 'photo')
+        else:
+            await update.message.reply_text("⚠️ Previous photo/video not found. Please send a photo or video.")
+            return
+    elif "Take from my Telegram profile" in text:
+        photos = await context.bot.get_user_profile_photos(user_id=user_id, limit=1)
+        if photos.total_count > 0:
+            media_id = photos.photos[0][-1].file_id
+            media_type = 'photo'
+        else:
+            await update.message.reply_text("⚠️ You don't have a profile photo on Telegram. Please send a photo or video manually.")
+            return
+    else:
+        if update.message.photo:
+            media_id = update.message.photo[-1].file_id
+            media_type = 'photo'
+        elif update.message.video:
+            media_id = update.message.video.file_id
+            media_type = 'video'
+        else:
+            await update.message.reply_text("⚠️ Please send a photo or video or select an option below.")
+            return
+        
+    age = context.user_data.get('reg_age')
+    gender = context.user_data.get('reg_gender')
+    target = context.user_data.get('reg_target')
+    name = context.user_data.get('reg_name')
+    
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO users (user_id, profile_name, age, gender, target_gender, media_id, media_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+            profile_name = EXCLUDED.profile_name,
+            age = EXCLUDED.age,
+            gender = EXCLUDED.gender,
+            target_gender = EXCLUDED.target_gender,
+            media_id = EXCLUDED.media_id,
+            media_type = EXCLUDED.media_type
+        """, (user_id, name, age, gender, target, media_id, media_type))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+    context.user_data.clear()
+    
+    await update.message.reply_text(
+        "✅ Your profile has been successfully saved! 🎉",
+        reply_markup=get_main_menu()
+    )
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     step = context.user_data.get('step')
@@ -380,7 +448,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['step'] = 'waiting_media'
         
         user_prof = get_user_profile(user_id)
-        # အကယ်၍ အရင် Data / media_id ရှိမှသာ Leave current ခလုတ်ကို ပြပေးမည်
         if user_prof and user_prof.get('media_id'):
             reply_markup = ReplyKeyboardMarkup(
                 [[KeyboardButton("Leave current")],
@@ -389,7 +456,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 one_time_keyboard=True
             )
         else:
-            # Profile အသစ် (သို့) ပုံမရှိသေးသူများအတွက် Leave current ကို လုံးဝမပြတော့ပါ
             reply_markup = ReplyKeyboardMarkup(
                 [[KeyboardButton("Take from my Telegram profile")]],
                 resize_keyboard=True,
@@ -401,67 +467,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
         return
-        
+
     elif step == 'waiting_media':
-        media_id = None
-        media_type = 'photo'
-        
-        if "Leave current" in text:
-            user_prof = get_user_profile(user_id)
-            if user_prof and user_prof.get('media_id'):
-                media_id = user_prof.get('media_id')
-                media_type = user_prof.get('media_type', 'photo')
-            else:
-                await update.message.reply_text("⚠️ Previous photo/video not found. Please send a photo or video.")
-                return
-        elif "Take from my Telegram profile" in text:
-            photos = await context.bot.get_user_profile_photos(user_id=user_id, limit=1)
-            if photos.total_count > 0:
-                media_id = photos.photos[0][-1].file_id
-                media_type = 'photo'
-            else:
-                await update.message.reply_text("⚠️ You don't have a profile photo on Telegram. Please send a photo or video manually.")
-                return
-        else:
-            if update.message.photo:
-                media_id = update.message.photo[-1].file_id
-                media_type = 'photo'
-            elif update.message.video:
-                media_id = update.message.video.file_id
-                media_type = 'video'
-            else:
-                await update.message.reply_text("⚠️ Please send a photo or video or select an option below.")
-                return
-            
-        age = context.user_data.get('reg_age')
-        gender = context.user_data.get('reg_gender')
-        target = context.user_data.get('reg_target')
-        name = context.user_data.get('reg_name')
-        
-        conn = get_db_connection()
-        if conn:
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO users (user_id, profile_name, age, gender, target_gender, media_id, media_type)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET
-                profile_name = EXCLUDED.profile_name,
-                age = EXCLUDED.age,
-                gender = EXCLUDED.gender,
-                target_gender = EXCLUDED.target_gender,
-                media_id = EXCLUDED.media_id,
-                media_type = EXCLUDED.media_type
-            """, (user_id, name, age, gender, target, media_id, media_type))
-            conn.commit()
-            cur.close()
-            conn.close()
-            
-        context.user_data.clear()
-        
-        await update.message.reply_text(
-            "✅ Your profile has been successfully saved! 🎉",
-            reply_markup=get_main_menu()
-        )
+        await handle_media_input(update, context)
         return
 
     elif step == 'waiting_like_message':
@@ -503,10 +511,11 @@ def main():
     application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
     
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_message))
+    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media_input))
 
     print("Bot is running...")
     application.run_polling()
 
 if __name__ == "__main__":
     main()
+    
