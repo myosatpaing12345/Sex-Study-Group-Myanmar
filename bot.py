@@ -40,6 +40,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
             profile_name TEXT,
+            age TEXT,
             gender TEXT,
             target_gender TEXT,
             bio TEXT,
@@ -92,45 +93,95 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_prof = get_user_profile(user_id)
     
     if user_prof and user_prof.get('profile_name'):
-        await update.message.reply_text(
-            f"Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋",
-            reply_markup=get_main_menu()
+        # Data ရှိပြီးသား (User ရှိပြီးသား) လူများအတွက် - သူတို့အရင်က ဖြည့်ခဲ့ဖူးသော အချက်အလက်ကို text bar အောက်တွင် ခလုတ်အဖြစ် ပြသမည်
+        saved_age = user_prof.get('age', '18')
+        reply_markup = ReplyKeyboardMarkup(
+            [[KeyboardButton(str(saved_age))]],
+            resize_keyboard=True,
+            one_time_keyboard=True
         )
+        
+        await update.message.reply_text(
+            f"Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
+            reply_markup=reply_markup
+        )
+        context.user_data['step'] = 'waiting_age'
         return
 
-    # Text Bar အောက်တွင် ခလုတ်ပေါ်စေရန် ReplyKeyboardMarkup သုံးခြင်း (Gender)
-    reply_markup = ReplyKeyboardMarkup(
-        [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")]],
-        resize_keyboard=True,
-        one_time_keyboard=True
+    # Data မရှိသေးတဲ့ လူသစ်များအတွက် (ကိုယ့်ဘာသာ ဖြည့်ရန်)
+    await update.message.reply_text(
+        "Welcome to Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
+        reply_markup=ReplyKeyboardRemove()
     )
+    context.user_data['step'] = 'waiting_age'
+
+# Age ရွေးချယ်ပြီးနောက် Gender မေးရန်
+async def handle_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    age_text = update.message.text
+    context.user_data['reg_age'] = age_text
+    
+    user_id = update.effective_user.id
+    user_prof = get_user_profile(user_id)
+    
+    # User ဟောင်းဖြစ်ပါက သူအရင်က ဖြည့်ခဲ့သော gender ကို text bar အောက်တွင် ခလုတ်အဖြစ် ပြမည်
+    if user_prof and user_prof.get('gender'):
+        saved_gender = user_prof.get('gender')
+        gender_label = "👨 Male" if saved_gender == "male" else "👩 Female"
+        reply_markup = ReplyKeyboardMarkup(
+            [[KeyboardButton(gender_label)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+    else:
+        reply_markup = ReplyKeyboardMarkup(
+            [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
     
     await update.message.reply_text(
-        "Welcome to Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nTo get started, please select your gender:",
+        "To get started, please select your gender:",
         reply_markup=reply_markup
     )
     context.user_data['step'] = 'waiting_gender'
 
-# Gender ရွေးချယ်မှု Handler (Text Bar Button အတွက်)
+# Gender ရွေးချယ်မှု Handler
 async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
-    if text == "👨 Male":
+    if "Male" in text:
         gender = "male"
-    elif text == "👩 Female":
+    elif "Female" in text:
         gender = "female"
     else:
         return
 
     context.user_data['reg_gender'] = gender
     
-    # Target ရွေးရန် Text Bar အောက်တွင် ခလုတ်ပြသခြင်း
-    reply_markup = ReplyKeyboardMarkup(
-        [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")],
-         [KeyboardButton("🌐 Anyone")]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
+    user_id = update.effective_user.id
+    user_prof = get_user_profile(user_id)
+    
+    # User ဟောင်းဖြစ်ပါက သူအရင်က ဖြည့်ခဲ့သော target ကို text bar အောက်တွင် ခလုတ်အဖြစ် ပြမည်
+    if user_prof and user_prof.get('target_gender'):
+        saved_target = user_prof.get('target_gender')
+        if saved_target == "male":
+            target_label = "👨 Male"
+        elif saved_target == "female":
+            target_label = "👩 Female"
+        else:
+            target_label = "🌐 Anyone"
+        reply_markup = ReplyKeyboardMarkup(
+            [[KeyboardButton(target_label)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+    else:
+        reply_markup = ReplyKeyboardMarkup(
+            [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")],
+             [KeyboardButton("🌐 Anyone")]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
     
     await update.message.reply_text(
         "🎯 Who are you looking for?",
@@ -138,27 +189,43 @@ async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     context.user_data['step'] = 'waiting_target'
 
-# Target ရွေးချယ်မှု Handler (Text Bar Button အတွက်)
+# Target ရွေးချယ်မှု Handler
 async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
-    if text == "👨 Male":
+    if "Male" in text:
         target = "male"
-    elif text == "👩 Female":
+    elif "Female" in text:
         target = "female"
-    elif text == "🌐 Anyone":
+    elif "Anyone" in text:
         target = "any"
     else:
         return
 
     context.user_data['reg_target'] = target
-    context.user_data['step'] = 'waiting_name'
     
-    # ခလုတ်များကို ဖျောက်ပေးရန် ReplyKeyboardRemove သုံးသည်
-    await update.message.reply_text(
-        "✍️ Please enter your **Profile Name**:",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    user_id = update.effective_user.id
+    user_prof = get_user_profile(user_id)
+    
+    # User ဟောင်းဖြစ်ပါက သူအရင်က ဖြည့်ခဲ့သော နာမည်ကို text bar အောက်တွင် ခလုတ်အဖြစ် ပြမည်
+    if user_prof and user_prof.get('profile_name'):
+        saved_name = user_prof.get('profile_name')
+        reply_markup = ReplyKeyboardMarkup(
+            [[KeyboardButton(saved_name)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        await update.message.reply_text(
+            "✍️ Please enter your **Profile Name**:",
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text(
+            "✍️ Please enter your **Profile Name**:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+    
+    context.user_data['step'] = 'waiting_name'
 
 # My Profile ပြသရန်
 async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -174,12 +241,13 @@ async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = (
         f"👤 **Your Profile**\n\n"
         f"📝 Name: {user_prof['profile_name']}\n"
+        f"🎂 Age: {user_prof.get('age', 'N/A')}\n"
         f"🚻 Gender: {user_prof['gender']}\n"
         f"🎯 Target: {user_prof['target_gender']}"
     )
     
     if user_prof.get('media_id'):
-        if user_prof.get('media_type') == 'video':
+        if user_prof.get('media_type'] == 'video':
             await query.message.reply_video(video=user_prof['media_id'], caption=caption, parse_mode='Markdown', reply_markup=get_main_menu())
         else:
             await query.message.reply_photo(photo=user_prof['media_id'], caption=caption, parse_mode='Markdown', reply_markup=get_main_menu())
@@ -191,16 +259,24 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    reply_markup = ReplyKeyboardMarkup(
-        [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
+    user_id = query.from_user.id
+    user_prof = get_user_profile(user_id)
+    
+    if user_prof and user_prof.get('age'):
+        saved_age = user_prof.get('age')
+        reply_markup = ReplyKeyboardMarkup(
+            [[KeyboardButton(str(saved_age))]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+    else:
+        reply_markup = ReplyKeyboardRemove()
+
     await query.message.reply_text(
-        "⚙️ To update your profile, please select your gender:",
+        "How old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
         reply_markup=reply_markup
     )
-    context.user_data['step'] = 'waiting_gender'
+    context.user_data['step'] = 'waiting_age'
 
 # --- Matching System ---
 async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -245,10 +321,10 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
     ]
     
-    caption = f"👤 **{target['profile_name']}**\n🚻 Gender: {target['gender']}"
+    caption = f"👤 **{target['profile_name']}**\n🎂 Age: {target.get('age', 'N/A')}\n🚻 Gender: {target['gender']}"
     
     if target.get('media_id'):
-        if target.get('media_type') == 'video':
+        if target.get('media_type'] == 'video':
             await query.message.reply_video(video=target['media_id'], caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await query.message.reply_photo(photo=target['media_id'], caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
@@ -333,13 +409,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     step = context.user_data.get('step')
     text = update.message.text if update.message.text else ""
 
-    if step == 'waiting_gender':
-        if text in ["👨 Male", "👩 Female"]:
+    if step == 'waiting_age':
+        await handle_age(update, context)
+        return
+
+    elif step == 'waiting_gender':
+        if "Male" in text or "Female" in text:
             await gender_text_handler(update, context)
         return
         
     elif step == 'waiting_target':
-        if text in ["👨 Male", "👩 Female", "🌐 Anyone"]:
+        if "Male" in text or "Female" in text or "Anyone" in text:
             await target_text_handler(update, context)
         return
 
@@ -348,8 +428,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['reg_name'] = name
         context.user_data['step'] = 'waiting_media'
         
+        user_prof = get_user_profile(user_id)
+        if user_prof and user_prof.get('media_id'):
+            # အရင် media ကို ပြန်သုံးလိုက သုံးနိုင်ရန် သို့မဟုတ် အသစ်ပို့ရန် ခွင့်ပြုခြင်း
+            pass
+            
         await update.message.reply_text(
-            "📸 Please send your **photo or video**:"
+            "📸 Please send your **photo or video**:",
+            reply_markup=ReplyKeyboardRemove()
         )
         return
         
@@ -367,6 +453,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Please send a photo or video only.")
             return
             
+        age = context.user_data.get('reg_age')
         gender = context.user_data.get('reg_gender')
         target = context.user_data.get('reg_target')
         name = context.user_data.get('reg_name')
@@ -375,15 +462,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if conn:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO users (user_id, profile_name, gender, target_gender, media_id, media_type)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO users (user_id, profile_name, age, gender, target_gender, media_id, media_type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (user_id) DO UPDATE SET
                 profile_name = EXCLUDED.profile_name,
+                age = EXCLUDED.age,
                 gender = EXCLUDED.gender,
                 target_gender = EXCLUDED.target_gender,
                 media_id = EXCLUDED.media_id,
                 media_type = EXCLUDED.media_type
-            """, (user_id, name, gender, target, media_id, media_type))
+            """, (user_id, name, age, gender, target, media_id, media_type))
             conn.commit()
             cur.close()
             conn.close()
