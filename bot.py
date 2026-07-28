@@ -380,6 +380,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['step'] = 'waiting_media'
         
         user_prof = get_user_profile(user_id)
+        # အကယ်၍ အရင် Data / media_id ရှိမှသာ Leave current ခလုတ်ကို ပြပေးမည်
         if user_prof and user_prof.get('media_id'):
             reply_markup = ReplyKeyboardMarkup(
                 [[KeyboardButton("Leave current")],
@@ -388,6 +389,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 one_time_keyboard=True
             )
         else:
+            # Profile အသစ် (သို့) ပုံမရှိသေးသူများအတွက် Leave current ကို လုံးဝမပြတော့ပါ
             reply_markup = ReplyKeyboardMarkup(
                 [[KeyboardButton("Take from my Telegram profile")]],
                 resize_keyboard=True,
@@ -410,7 +412,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 media_id = user_prof.get('media_id')
                 media_type = user_prof.get('media_type', 'photo')
             else:
-                await update.message.reply_text("⚠️ Previous photo/video not found. Please send a new photo or video.")
+                await update.message.reply_text("⚠️ Previous photo/video not found. Please send a photo or video.")
                 return
         elif "Take from my Telegram profile" in text:
             photos = await context.bot.get_user_profile_photos(user_id=user_id, limit=1)
@@ -508,4 +510,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-                              
