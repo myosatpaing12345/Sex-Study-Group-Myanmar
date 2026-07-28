@@ -134,7 +134,6 @@ async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     context.user_data['reg_gender'] = gender
     
-    # "Anyone" ကို "No matter" သို့ ပြောင်းလဲထားသည်
     reply_markup = ReplyKeyboardMarkup(
         [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")],
          [KeyboardButton("🌐 No matter")]],
@@ -407,7 +406,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 media_id = user_prof.get('media_id')
                 media_type = user_prof.get('media_type', 'photo')
             else:
-                await update.message.reply_text("⚠️ Previous photo not found. Please send a photo or video.")
+                await update.message.reply_text("⚠️ Previous photo/video not found. Please send a new photo or video.")
                 return
         elif text == "Take from my Telegram profile":
             photos = await context.bot.get_user_profile_photos(user_id=user_id, limit=1)
@@ -505,4 +504,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+             
