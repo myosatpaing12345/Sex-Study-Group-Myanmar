@@ -231,7 +231,7 @@ async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     if user_prof.get('media_id'):
-        if user_prof.get('media_type') == 'video':
+        if user_prof.get('media_type'] == 'video':
             await query.message.reply_video(video=user_prof['media_id'], caption=caption, parse_mode='Markdown', reply_markup=get_main_menu())
         else:
             await query.message.reply_photo(photo=user_prof['media_id'], caption=caption, parse_mode='Markdown', reply_markup=get_main_menu())
@@ -306,7 +306,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = f"👤 **{target['profile_name']}**\n🎂 Age: {target.get('age', 'N/A')}\n🚻 Gender: {target['gender']}"
     
     if target.get('media_id'):
-        if target.get('media_type') == 'video':
+        if target.get('media_type'] == 'video':
             await query.message.reply_video(video=target['media_id'], caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await query.message.reply_photo(photo=target['media_id'], caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
@@ -408,25 +408,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['reg_name'] = name
         context.user_data['step'] = 'waiting_media'
         
+        user_prof = get_user_profile(user_id)
+        if user_prof and user_prof.get('media_id'):
+            reply_markup = ReplyKeyboardMarkup(
+                [[KeyboardButton("Leave current")],
+                 [KeyboardButton("Take from my Telegram profile")]],
+                resize_keyboard=True,
+                one_time_keyboard=True
+            )
+        else:
+            reply_markup = ReplyKeyboardRemove()
+            
         await update.message.reply_text(
-            "📸 Please send your **photo or video**:",
-            reply_markup=ReplyKeyboardRemove()
+            "Send your photo or record a video (up to 15 sec).\nProfiles with a visible face get more likes ❤️\n\n❗ Photos of others and images from the internet are not allowed",
+            reply_markup=reply_markup
         )
         return
         
     elif step == 'waiting_media':
         media_id = None
-        media_type = None
+        media_type = 'photo'
         
-        if update.message.photo:
-            media_id = update.message.photo[-1].file_id
-            media_type = 'photo'
-        elif update.message.video:
-            media_id = update.message.video.file_id
-            media_type = 'video'
+        if text == "Leave current":
+            user_prof = get_user_profile(user_id)
+            if user_prof and user_prof.get('media_id'):
+                media_id = user_prof.get('media_id')
+                media_type = user_prof.get('media_type', 'photo')
+            else:
+                await update.message.reply_text("⚠️ Previous photo not found. Please send a photo or video.")
+                return
+        elif text == "Take from my Telegram profile":
+            photos = await context.bot.get_user_profile_photos(user_id=user_id, limit=1)
+            if photos.total_count > 0:
+                media_id = photos.photos[0][-1].file_id
+                media_type = 'photo'
+            else:
+                await update.message.reply_text("⚠️ You don't have a profile photo on Telegram. Please send a photo or video manually.")
+                return
         else:
-            await update.message.reply_text("⚠️ Please send a photo or video only.")
-            return
+            if update.message.photo:
+                media_id = update.message.photo[-1].file_id
+                media_type = 'photo'
+            elif update.message.video:
+                media_id = update.message.video.file_id
+                media_type = 'video'
+            else:
+                await update.message.reply_text("⚠️ Please send a photo or video or select an option below.")
+                return
             
         age = context.user_data.get('reg_age')
         gender = context.user_data.get('reg_gender')
@@ -505,4 +533,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-            
+    
