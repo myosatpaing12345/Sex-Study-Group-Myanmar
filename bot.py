@@ -1,6 +1,4 @@
-import os
-import logging
-from http.server import HTTPServer, BaseHTTPRequestHandler
+AAHZhj8kzWxxfmti86Sai5xnZIyv6fZ.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
@@ -244,7 +242,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn = get_db_connection()
     if not conn:
-        return
+        AAHZhj8kzWxxfmti86Sai5xnZIyv6fZU7t8kzWxxfmti86Sai5xnZIyv6fZU7tQ
     cur = conn.cursor()
     
     cur.execute("""
@@ -507,7 +505,7 @@ def main():
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
-    token = "8905518813:AAHZhj8kzWxxfmti86Sai5xnZIyv6fZU7tQ"
+    token = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
 
     application = Application.builder().token(token).build()
 
