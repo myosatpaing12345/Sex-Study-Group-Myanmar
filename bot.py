@@ -418,8 +418,15 @@ async def handle_media_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
     context.user_data.clear()
     
+    # ခလုတ်များ အပြီးအပိုင် ပျောက်သွားစေရန် ReplyKeyboardRemove() သုံးပေးထားသည်
     await update.message.reply_text(
         "✅ Your profile has been successfully saved! 🎉",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    # နောက်ထပ် Main Menu ကိုပါ တစ်ခါတည်း ပို့ပေးမည်
+    await update.message.reply_text(
+        "🏠 **Main Menu**",
+        parse_mode='Markdown',
         reply_markup=get_main_menu()
     )
 
