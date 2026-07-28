@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Database Connection (Render PostgreSQL သို့မဟုတ် URL သုံးရန်)
+# Database Connection
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db_connection():
@@ -28,14 +28,12 @@ def get_db_connection():
         return None
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
-# Database Table များ ဖန်တီးခြင်း
 def init_db():
     conn = get_db_connection()
     if not conn:
         logger.error("DATABASE_URL not found!")
         return
     cur = conn.cursor()
-    # Users Table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
@@ -49,7 +47,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Matches Table (Like / Pass တွေ မှတ်သားရန်)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS matches (
             user_id BIGINT,
@@ -65,7 +62,6 @@ def init_db():
 
 init_db()
 
-# User Profile ရှာရန် Helper Function
 def get_user_profile(user_id):
     conn = get_db_connection()
     if not conn:
@@ -77,7 +73,6 @@ def get_user_profile(user_id):
     conn.close()
     return user
 
-# Main Menu Keyboard (Inline)
 def get_main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔍 Find Match", callback_data="find_match")],
@@ -85,7 +80,6 @@ def get_main_menu():
          InlineKeyboardButton("⚙️ Edit Profile", callback_data="edit_profile")]
     ])
 
-# /start Command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
@@ -93,29 +87,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_prof = get_user_profile(user_id)
     
     if user_prof and user_prof.get('profile_name'):
-        # Data ရှိပြီးသား (User ရှိပြီးသား) လူများအတွက် - သူတို့အရင်က ဖြည့်ခဲ့ဖူးသော အချက်အလက်ကို text bar အောက်တွင် ခလုတ်အဖြစ် ပြသမည်
         saved_age = user_prof.get('age', '18')
         reply_markup = ReplyKeyboardMarkup(
             [[KeyboardButton(str(saved_age))]],
             resize_keyboard=True,
             one_time_keyboard=True
         )
-        
         await update.message.reply_text(
-            f"Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
+            "Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
             reply_markup=reply_markup
         )
         context.user_data['step'] = 'waiting_age'
         return
 
-    # Data မရှိသေးတဲ့ လူသစ်များအတွက် (ကိုယ့်ဘာသာ ဖြည့်ရန်)
     await update.message.reply_text(
         "Welcome to Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
         reply_markup=ReplyKeyboardRemove()
     )
     context.user_data['step'] = 'waiting_age'
 
-# Age ရွေးချယ်ပြီးနောက် Gender မေးရန်
 async def handle_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     age_text = update.message.text
     context.user_data['reg_age'] = age_text
@@ -123,7 +113,6 @@ async def handle_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_prof = get_user_profile(user_id)
     
-    # User ဟောင်းဖြစ်ပါက သူအရင်က ဖြည့်ခဲ့သော gender ကို text bar အောက်တွင် ခလုတ်အဖြစ် ပြမည်
     if user_prof and user_prof.get('gender'):
         saved_gender = user_prof.get('gender')
         gender_label = "👨 Male" if saved_gender == "male" else "👩 Female"
@@ -145,7 +134,6 @@ async def handle_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     context.user_data['step'] = 'waiting_gender'
 
-# Gender ရွေးချယ်မှု Handler
 async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
@@ -161,7 +149,6 @@ async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     user_prof = get_user_profile(user_id)
     
-    # User ဟောင်းဖြစ်ပါက သူအရင်က ဖြည့်ခဲ့သော target ကို text bar အောက်တွင် ခလုတ်အဖြစ် ပြမည်
     if user_prof and user_prof.get('target_gender'):
         saved_target = user_prof.get('target_gender')
         if saved_target == "male":
@@ -189,7 +176,6 @@ async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     context.user_data['step'] = 'waiting_target'
 
-# Target ရွေးချယ်မှု Handler
 async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
@@ -207,7 +193,6 @@ async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     user_prof = get_user_profile(user_id)
     
-    # User ဟောင်းဖြစ်ပါက သူအရင်က ဖြည့်ခဲ့သော နာမည်ကို text bar အောက်တွင် ခလုတ်အဖြစ် ပြမည်
     if user_prof and user_prof.get('profile_name'):
         saved_name = user_prof.get('profile_name')
         reply_markup = ReplyKeyboardMarkup(
@@ -227,7 +212,6 @@ async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     context.user_data['step'] = 'waiting_name'
 
-# My Profile ပြသရန်
 async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -247,14 +231,13 @@ async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     if user_prof.get('media_id'):
-        if user_prof.get('media_type'] == 'video':
+        if user_prof.get('media_type') == 'video':
             await query.message.reply_video(video=user_prof['media_id'], caption=caption, parse_mode='Markdown', reply_markup=get_main_menu())
         else:
             await query.message.reply_photo(photo=user_prof['media_id'], caption=caption, parse_mode='Markdown', reply_markup=get_main_menu())
     else:
         await query.message.reply_text(caption, parse_mode='Markdown', reply_markup=get_main_menu())
 
-# Edit Profile 
 async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -278,7 +261,6 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     context.user_data['step'] = 'waiting_age'
 
-# --- Matching System ---
 async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -324,14 +306,13 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = f"👤 **{target['profile_name']}**\n🎂 Age: {target.get('age', 'N/A')}\n🚻 Gender: {target['gender']}"
     
     if target.get('media_id'):
-        if target.get('media_type'] == 'video':
+        if target.get('media_type') == 'video':
             await query.message.reply_video(video=target['media_id'], caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await query.message.reply_photo(photo=target['media_id'], caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         await query.message.reply_text(caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
-# Match Actions
 async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -403,7 +384,6 @@ async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
 
     await find_match(update, context)
 
-# Text / Media / Message Handler
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     step = context.user_data.get('step')
@@ -428,11 +408,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['reg_name'] = name
         context.user_data['step'] = 'waiting_media'
         
-        user_prof = get_user_profile(user_id)
-        if user_prof and user_prof.get('media_id'):
-            # အရင် media ကို ပြန်သုံးလိုက သုံးနိုင်ရန် သို့မဟုတ် အသစ်ပို့ရန် ခွင့်ပြုခြင်း
-            pass
-            
         await update.message.reply_text(
             "📸 Please send your **photo or video**:",
             reply_markup=ReplyKeyboardRemove()
@@ -497,7 +472,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Profile not found. Please click /start.")
         return
 
-# Render အတွက် Dummy Web Server (Port ပြဿနာ ဖြေရှင်းရန်)
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -509,7 +483,6 @@ def run_web_server():
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
-# Main Function
 def main():
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
@@ -532,4 +505,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+            
