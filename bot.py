@@ -76,10 +76,10 @@ def get_user_profile(user_id):
     conn.close()
     return user
 
-# Main Menu Keyboard
+# Main Menu Keyboard (English)
 def get_main_menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Match ရှာမည်", callback_data="find_match")],
+        [InlineKeyboardButton("🔍 Find Match", callback_data="find_match")],
         [InlineKeyboardButton("👤 My Profile", callback_data="my_profile"),
          InlineKeyboardButton("⚙️ Edit Profile", callback_data="edit_profile")]
     ])
@@ -93,20 +93,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if user_prof and user_prof.get('profile_name'):
         await update.message.reply_text(
-            f"Welcome back, {user_prof['profile_name']}! 🎉\nသင်၏ Profile အဆင်သင့် ဖြစ်နေပါပြီ။",
+            f"Welcome back, {user_prof['profile_name']}! 🎉\nYour profile is ready.",
             reply_markup=get_main_menu()
         )
         return
 
-    # အသစ်ဆိုရင် Gender ရွေးခိုင်းမည်
+    # အသစ်ဆိုရင် Gender ရွေးခိုင်းမည် (English)
     keyboard = [
-        [InlineKeyboardButton("👨 Male (ကျား)", callback_data="reg_male")],
-        [InlineKeyboardButton("👩 Female (မ)", callback_data="reg_female")]
+        [InlineKeyboardButton("👨 Male", callback_data="reg_male")],
+        [InlineKeyboardButton("👩 Female", callback_data="reg_female")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        "👋 မင်္ဂလာပါ LeoMatch မှ ကြိုဆိုပါတယ်။\nစတင်ရန် ကျေးဇူးပြု၍ သင်၏ ကျား/မ ကို ရွေးချယ်ပါ -",
+        "👋 Welcome to Sex Study Group Myanmar.\nTo get started, please select your gender:",
         reply_markup=reply_markup
     )
 
@@ -119,14 +119,14 @@ async def gender_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['reg_gender'] = gender
     
     keyboard = [
-        [InlineKeyboardButton("👨 Male (ကျား)", callback_data="target_male")],
-        [InlineKeyboardButton("👩 Female (မ)", callback_data="target_female")],
-        [InlineKeyboardButton("🌐 Anyone (အားလုံး)", callback_data="target_any")]
+        [InlineKeyboardButton("👨 Male", callback_data="target_male")],
+        [InlineKeyboardButton("👩 Female", callback_data="target_female")],
+        [InlineKeyboardButton("🌐 Anyone", callback_data="target_any")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.message.edit_text(
-        "🎯 သင် ဘယ်သူတွေကို ရှာချင်ပါသလဲ?",
+        "🎯 Who are you looking for?",
         reply_markup=reply_markup
     )
 
@@ -139,11 +139,11 @@ async def target_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['reg_target'] = target
     
     await query.message.edit_text(
-        "✍️ ကျေးဇူးပြု၍ သင်၏ **နာမည် (Profile Name)** ကို ရိုက်ထည့်ပေးပါ။"
+        "✍️ Please enter your **Profile Name**:"
     )
     context.user_data['step'] = 'waiting_name'
 
-# My Profile ပြသရန်
+# My Profile ပြသရန် (English)
 async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -151,7 +151,7 @@ async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_prof = get_user_profile(user_id)
     
     if not user_prof:
-        await query.message.reply_text("⚠️ Profile မရှိသေးပါ။ /start ဖြင့် အစကနေ စတင်ပါ။")
+        await query.message.reply_text("⚠️ Profile not found. Please type /start to begin.")
         return
 
     caption = (
@@ -169,17 +169,17 @@ async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.message.reply_text(caption, parse_mode='Markdown', reply_markup=get_main_menu())
 
-# Edit Profile (အစကနေ ပြန်မှတ်ရန်)
+# Edit Profile (English)
 async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     keyboard = [
-        [InlineKeyboardButton("👨 Male (ကျား)", callback_data="reg_male")],
-        [InlineKeyboardButton("👩 Female (မ)", callback_data="reg_female")]
+        [InlineKeyboardButton("👨 Male", callback_data="reg_male")],
+        [InlineKeyboardButton("👩 Female", callback_data="reg_female")]
     ]
     await query.message.edit_text(
-        "⚙️ Profile အသစ်ပြန်ပြင်ရန် သင်၏ ကျား/မ ကို ရွေးချယ်ပါ -",
+        "⚙️ To update your profile, please select your gender:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -191,7 +191,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_prof = get_user_profile(user_id)
     if not user_prof:
-        await query.message.reply_text("⚠️ ကျေးဇူးပြု၍ ပထမဆုံး /start ဖြင့် Profile လုပ်ပါရန်။")
+        await query.message.reply_text("⚠️ Please create a profile first using /start.")
         return
 
     conn = get_db_connection()
@@ -199,7 +199,6 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     cur = conn.cursor()
     
-    # မိမိနဲ့ မတူတဲ့သူ (သို့မဟုတ် target ကိုက်ညီသူ) ကို ရှာမည်
     cur.execute("""
         SELECT * FROM users 
         WHERE user_id != %s AND user_id NOT IN (
@@ -213,7 +212,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not target:
         await query.message.edit_text(
-            "😔 လောလောဆယ် Profile အသစ်များ မရှိတော့ပါ။ နောက်မှ ထပ်စမ်းကြည့်ပါ။",
+            "😔 No more new profiles available right now. Please check back later.",
             reply_markup=get_main_menu()
         )
         return
@@ -222,7 +221,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("❤️ Like", callback_data="match_like"),
-         InlineKeyboardButton("💌 Message ဖြင့် Like", callback_data="match_msg_like")],
+         InlineKeyboardButton("💌 Message with Like", callback_data="match_msg_like")],
         [InlineKeyboardButton("👎 Pass", callback_data="match_pass"),
          InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
     ]
@@ -237,7 +236,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.message.reply_text(caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
-# Match Actions (Like / Pass / Message)
+# Match Actions
 async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -247,11 +246,10 @@ async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     target_id = context.user_data.get('current_target')
 
     if action_type == "main_menu":
-        await query.message.edit_text("🏠 Main Menu သို့ ပြန်ရောက်ပါပြီ။", reply_markup=get_main_menu())
+        await query.message.edit_text("🏠 Returned to Main Menu.", reply_markup=get_main_menu())
         return
 
     if action_type == "match_pass":
-        # Pass လုပ်လျှင် Matches ထဲ မှတ်မည်
         conn = get_db_connection()
         if conn:
             cur = conn.cursor()
@@ -259,7 +257,6 @@ async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             conn.commit()
             cur.close()
             conn.close()
-        # နောက်တစ်ယောက် ဆက်ရှာမည်
         await find_match(update, context)
         return
 
@@ -268,7 +265,7 @@ async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     if action_type == "match_msg_like":
-        await query.message.edit_text("💌 ဟိုဘက်လူဆီ ပို့မယ့် Message (သို့မဟုတ် Video/Photo) ကို ပို့ပေးပါ။")
+        await query.message.edit_text("💌 Please send your message (or photo/video) to send along with your like:")
         context.user_data['step'] = 'waiting_like_message'
         return
 
@@ -281,7 +278,6 @@ async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     cur.execute("INSERT INTO matches (user_id, target_id, action, message_text) VALUES (%s, %s, %s, %s) ON CONFLICT (user_id, target_id) DO UPDATE SET action = %s, message_text = %s", 
                 (user_id, target_id, action, custom_msg, action, custom_msg))
     
-    # ဟိုဘက်လူကလည်း ပြန် Like ထားသလား စစ်မည်
     cur.execute("SELECT action FROM matches WHERE user_id = %s AND target_id = %s", (target_id, user_id))
     mutual = cur.fetchone()
     
@@ -292,20 +288,18 @@ async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     cur.close()
     conn.close()
 
-    # Notification ပို့မည်
     if custom_msg:
-        notify_text = f"💌 **{user_prof['profile_name']} ထံမှ Like နှင့် မက်ဆေ့ချ် ရရှိထားပါသည်!**\n\n💬 Message: _{custom_msg}_"
+        notify_text = f"💌 **You received a Like and a message from {user_prof['profile_name']}!**\n\n💬 Message: _{custom_msg}_"
     else:
-        notify_text = f"❤️ **{user_prof['profile_name']} က သင့်ကို Like ပေးထားပါသည်။**"
+        notify_text = f"❤️ **{user_prof['profile_name']} liked your profile.**"
 
     try:
         await context.bot.send_message(chat_id=target_id, text=notify_text, parse_mode='Markdown')
     except Exception:
         pass
 
-    # Mutual Match ဖြစ်သွားလျှင် (နှစ်ဖက်လုံး Like လျှင်)
     if mutual and mutual['action'] == 'like':
-        match_msg = f"🎉 **Match Successful!** 🎉\n\nသင်နှင့် **{target_prof['profile_name']}** တို့ အتبအလှန် သဘောကျကြပါပြီ။"
+        match_msg = f"🎉 **Match Successful!** 🎉\n\nYou and **{target_prof['profile_name']}** have liked each other."
         try:
             await update.effective_chat.send_message(match_msg)
             await context.bot.send_message(chat_id=target_id, text=match_msg)
@@ -325,7 +319,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['step'] = 'waiting_media'
         
         await update.message.reply_text(
-            "📸 ကျေးဇူးပြု၍ သင်၏ **ဓာတ်ပုံ သို့မဟုတ် ဗီဒီယို** တစ်ခု ပို့ပေးပါ။"
+            "📸 Please send your **photo or video**:"
         )
         return
         
@@ -340,7 +334,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media_id = update.message.video.file_id
             media_type = 'video'
         else:
-            await update.message.reply_text("⚠️ ကျေးဇူးပြု၍ ဓာတ်ပုံ (သို့) ဗီဒီယိုသာ ပို့ပေးပါ။")
+            await update.message.reply_text("⚠️ Please send a photo or video only.")
             return
             
         gender = context.user_data.get('reg_gender')
@@ -367,7 +361,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
         
         await update.message.reply_text(
-            "✅ သင်၏ Profile ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ! 🎉",
+            "✅ Your profile has been successfully saved! 🎉",
             reply_markup=get_main_menu()
         )
         return
@@ -382,7 +376,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_prof = get_user_profile(user_id)
     if not user_prof:
-        await update.message.reply_text("⚠️ သင်၏ Profile မရှိသေးပါ။ /start ကိုနှိပ်ပါ။")
+        await update.message.reply_text("⚠️ Profile not found. Please click /start.")
         return
 
 # Render အတွက် Dummy Web Server (Port ပြဿနာ ဖြေရှင်းရန်)
@@ -411,7 +405,7 @@ def main():
     application.add_handler(CallbackQueryHandler(target_handler, pattern="^target_"))
     application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
     application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
-    application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
+    application.add_handler(CallbackHandler(edit_profile, pattern="^edit_profile$"))
     application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
     
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -422,4 +416,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
+    
