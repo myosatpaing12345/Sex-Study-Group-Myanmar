@@ -367,8 +367,13 @@ async def handle_media_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
             media_id = user_prof.get('media_id')
             media_type = user_prof.get('media_type', 'photo')
         else:
-            await update.message.reply_text("⚠️ Previous photo/video not found. Please send a photo or video.")
-            return
+            photos = await context.bot.get_user_profile_photos(user_id=user_id, limit=1)
+            if photos.total_count > 0:
+                media_id = photos.photos[0][-1].file_id
+                media_type = 'photo'
+            else:
+                await update.message.reply_text("⚠️ Previous photo not found. Please send a photo or video.")
+                return
     elif "Take from my Telegram profile" in text:
         photos = await context.bot.get_user_profile_photos(user_id=user_id, limit=1)
         if photos.total_count > 0:
@@ -475,7 +480,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    elif step == 'waiting_media':
+    elif step == 'waiting_media' or "Leave current" in text or "Take from my Telegram profile" in text:
         await handle_media_input(update, context)
         return
 
@@ -507,7 +512,6 @@ def main():
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
-    # Bot Token အသစ် ထည့်သွင်းထားသည်
     token = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
 
     application = Application.builder().token(token).build()
@@ -526,4 +530,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+        
