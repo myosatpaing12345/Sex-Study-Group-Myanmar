@@ -405,7 +405,7 @@ def main():
     application.add_handler(CallbackQueryHandler(target_handler, pattern="^target_"))
     application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
     application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
-    application.add_handler(CallbackHandler(edit_profile, pattern="^edit_profile$"))
+    application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$")) # ပြင်ဆင်ပြီးစီး
     application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
     
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
