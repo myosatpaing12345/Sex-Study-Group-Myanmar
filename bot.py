@@ -1,4 +1,6 @@
-AAHZhj8kzWxxfmti86Sai5xnZIyv6fZ.server import HTTPServer, BaseHTTPRequestHandler
+import os
+import logging
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
@@ -242,7 +244,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn = get_db_connection()
     if not conn:
-        AAHZhj8kzWxxfmti86Sai5xnZIyv6fZU7t8kzWxxfmti86Sai5xnZIyv6fZU7tQ
+        return
     cur = conn.cursor()
     
     cur.execute("""
@@ -355,11 +357,6 @@ async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
 
 async def handle_media_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    step = context.user_data.get('step')
-    
-    if step != 'waiting_media':
-        return
-
     text = update.message.text if update.message.text else ""
     media_id = None
     media_type = 'photo'
@@ -396,6 +393,14 @@ async def handle_media_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
     target = context.user_data.get('reg_target')
     name = context.user_data.get('reg_name')
     
+    if not age or not gender or not target or not name:
+        user_prof = get_user_profile(user_id)
+        if user_prof:
+            age = age or user_prof.get('age')
+            gender = gender or user_prof.get('gender')
+            target = target or user_prof.get('target_gender')
+            name = name or user_prof.get('profile_name')
+
     conn = get_db_connection()
     if conn:
         cur = conn.cursor()
@@ -416,12 +421,10 @@ async def handle_media_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
     context.user_data.clear()
     
-    # ခလုတ်များ အပြီးအပိုင် ပျောက်သွားစေရန် ReplyKeyboardRemove() သုံးပေးထားသည်
     await update.message.reply_text(
         "✅ Your profile has been successfully saved! 🎉",
         reply_markup=ReplyKeyboardRemove()
     )
-    # နောက်ထပ် Main Menu ကိုပါ တစ်ခါတည်း ပို့ပေးမည်
     await update.message.reply_text(
         "🏠 **Main Menu**",
         parse_mode='Markdown',
@@ -448,8 +451,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif step == 'waiting_name':
-        name = text
-        context.user_data['reg_name'] = name
+        context.user_data['reg_name'] = text
         context.user_data['step'] = 'waiting_media'
         
         user_prof = get_user_profile(user_id)
@@ -505,6 +507,7 @@ def main():
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
+    # Bot Token အသစ် ထည့်သွင်းထားသည်
     token = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
 
     application = Application.builder().token(token).build()
@@ -515,8 +518,8 @@ def main():
     application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
     application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
     
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media_input))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
     application.run_polling()
