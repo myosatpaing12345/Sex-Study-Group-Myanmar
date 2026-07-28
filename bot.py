@@ -231,7 +231,7 @@ async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     if user_prof.get('media_id'):
-        if user_prof.get('media_type'] == 'video':
+        if user_prof.get('media_type') == 'video':
             await query.message.reply_video(video=user_prof['media_id'], caption=caption, parse_mode='Markdown', reply_markup=get_main_menu())
         else:
             await query.message.reply_photo(photo=user_prof['media_id'], caption=caption, parse_mode='Markdown', reply_markup=get_main_menu())
@@ -306,7 +306,7 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = f"👤 **{target['profile_name']}**\n🎂 Age: {target.get('age', 'N/A')}\n🚻 Gender: {target['gender']}"
     
     if target.get('media_id'):
-        if target.get('media_type'] == 'video':
+        if target.get('media_type') == 'video':
             await query.message.reply_video(video=target['media_id'], caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await query.message.reply_photo(photo=target['media_id'], caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
