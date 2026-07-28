@@ -388,7 +388,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 one_time_keyboard=True
             )
         else:
-            reply_markup = ReplyKeyboardRemove()
+            reply_markup = ReplyKeyboardMarkup(
+                [[KeyboardButton("Take from my Telegram profile")]],
+                resize_keyboard=True,
+                one_time_keyboard=True
+            )
             
         await update.message.reply_text(
             "Send your photo or record a video (up to 15 sec).\nProfiles with a visible face get more likes ❤️\n\n❗ Photos of others and images from the internet are not allowed",
@@ -400,7 +404,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         media_id = None
         media_type = 'photo'
         
-        if text == "Leave current":
+        if "Leave current" in text:
             user_prof = get_user_profile(user_id)
             if user_prof and user_prof.get('media_id'):
                 media_id = user_prof.get('media_id')
@@ -408,7 +412,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text("⚠️ Previous photo/video not found. Please send a new photo or video.")
                 return
-        elif text == "Take from my Telegram profile":
+        elif "Take from my Telegram profile" in text:
             photos = await context.bot.get_user_profile_photos(user_id=user_id, limit=1)
             if photos.total_count > 0:
                 media_id = photos.photos[0][-1].file_id
@@ -504,4 +508,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-             
+                              
