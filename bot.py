@@ -92,13 +92,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_prof = get_user_profile(user_id)
     
     if user_prof and user_prof.get('profile_name'):
+        # Data ရှိပြီးသား (User ရှိပြီးသား) လူများအတွက်
         await update.message.reply_text(
-            f"Welcome back, {user_prof['profile_name']}! 🎉\nYour profile is ready.",
+            f"Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋",
             reply_markup=get_main_menu()
         )
         return
 
-    # အသစ်ဆိုရင် Gender ရွေးခိုင်းမည် (English)
+    # Data မရှိသေးတဲ့ လူသစ်များအတွက်
     keyboard = [
         [InlineKeyboardButton("👨 Male", callback_data="reg_male")],
         [InlineKeyboardButton("👩 Female", callback_data="reg_female")]
@@ -106,7 +107,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        "👋 Welcome to Sex Study Group Myanmar.\nTo get started, please select your gender:",
+        "Welcome to Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nTo get started, please select your gender:",
         reply_markup=reply_markup
     )
 
@@ -405,7 +406,7 @@ def main():
     application.add_handler(CallbackQueryHandler(target_handler, pattern="^target_"))
     application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
     application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
-    application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$")) # ပြင်ဆင်ပြီးစီး
+    application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
     application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
     
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -416,4 +417,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
