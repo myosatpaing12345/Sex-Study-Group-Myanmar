@@ -2,7 +2,7 @@ import os
 import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -76,7 +76,7 @@ def get_user_profile(user_id):
     conn.close()
     return user
 
-# Main Menu Keyboard (English)
+# Main Menu Keyboard (Inline)
 def get_main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔍 Find Match", callback_data="find_match")],
@@ -92,59 +92,75 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_prof = get_user_profile(user_id)
     
     if user_prof and user_prof.get('profile_name'):
-        # Data ရှိပြီးသား (User ရှိပြီးသား) လူများအတွက်
         await update.message.reply_text(
             f"Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋",
             reply_markup=get_main_menu()
         )
         return
 
-    # Data မရှိသေးတဲ့ လူသစ်များအတွက်
-    keyboard = [
-        [InlineKeyboardButton("👨 Male", callback_data="reg_male")],
-        [InlineKeyboardButton("👩 Female", callback_data="reg_female")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    # Text Bar အောက်တွင် ခလုတ်ပေါ်စေရန် ReplyKeyboardMarkup သုံးခြင်း (Gender)
+    reply_markup = ReplyKeyboardMarkup(
+        [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
     
     await update.message.reply_text(
         "Welcome to Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nTo get started, please select your gender:",
         reply_markup=reply_markup
     )
+    context.user_data['step'] = 'waiting_gender'
 
-# Gender ရွေးချယ်မှု Handler
-async def gender_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+# Gender ရွေးချယ်မှု Handler (Text Bar Button အတွက်)
+async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
     
-    gender = query.data.split("_")[1] # male or female
+    if text == "👨 Male":
+        gender = "male"
+    elif text == "👩 Female":
+        gender = "female"
+    else:
+        return
+
     context.user_data['reg_gender'] = gender
     
-    keyboard = [
-        [InlineKeyboardButton("👨 Male", callback_data="target_male")],
-        [InlineKeyboardButton("👩 Female", callback_data="target_female")],
-        [InlineKeyboardButton("🌐 Anyone", callback_data="target_any")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    # Target ရွေးရန် Text Bar အောက်တွင် ခလုတ်ပြသခြင်း
+    reply_markup = ReplyKeyboardMarkup(
+        [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")],
+         [KeyboardButton("🌐 Anyone")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
     
-    await query.message.edit_text(
+    await update.message.reply_text(
         "🎯 Who are you looking for?",
         reply_markup=reply_markup
     )
+    context.user_data['step'] = 'waiting_target'
 
-# Target ရွေးချယ်မှု Handler
-async def target_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+# Target ရွေးချယ်မှု Handler (Text Bar Button အတွက်)
+async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
     
-    target = query.data.split("_")[1] # male, female, any
+    if text == "👨 Male":
+        target = "male"
+    elif text == "👩 Female":
+        target = "female"
+    elif text == "🌐 Anyone":
+        target = "any"
+    else:
+        return
+
     context.user_data['reg_target'] = target
-    
-    await query.message.edit_text(
-        "✍️ Please enter your **Profile Name**:"
-    )
     context.user_data['step'] = 'waiting_name'
+    
+    # ခလုတ်များကို ဖျောက်ပေးရန် ReplyKeyboardRemove သုံးသည်
+    await update.message.reply_text(
+        "✍️ Please enter your **Profile Name**:",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
-# My Profile ပြသရန် (English)
+# My Profile ပြသရန်
 async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -170,19 +186,21 @@ async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.message.reply_text(caption, parse_mode='Markdown', reply_markup=get_main_menu())
 
-# Edit Profile (English)
+# Edit Profile 
 async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    keyboard = [
-        [InlineKeyboardButton("👨 Male", callback_data="reg_male")],
-        [InlineKeyboardButton("👩 Female", callback_data="reg_female")]
-    ]
-    await query.message.edit_text(
-        "⚙️ To update your profile, please select your gender:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+    reply_markup = ReplyKeyboardMarkup(
+        [[KeyboardButton("👨 Male"), KeyboardButton("👩 Female")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
     )
+    await query.message.reply_text(
+        "⚙️ To update your profile, please select your gender:",
+        reply_markup=reply_markup
+    )
+    context.user_data['step'] = 'waiting_gender'
 
 # --- Matching System ---
 async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -313,9 +331,20 @@ async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     step = context.user_data.get('step')
-    
-    if step == 'waiting_name':
-        name = update.message.text
+    text = update.message.text if update.message.text else ""
+
+    if step == 'waiting_gender':
+        if text in ["👨 Male", "👩 Female"]:
+            await gender_text_handler(update, context)
+        return
+        
+    elif step == 'waiting_target':
+        if text in ["👨 Male", "👩 Female", "🌐 Anyone"]:
+            await target_text_handler(update, context)
+        return
+
+    elif step == 'waiting_name':
+        name = text
         context.user_data['reg_name'] = name
         context.user_data['step'] = 'waiting_media'
         
@@ -402,8 +431,6 @@ def main():
     application = Application.builder().token(token).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(gender_handler, pattern="^reg_"))
-    application.add_handler(CallbackQueryHandler(target_handler, pattern="^target_"))
     application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
     application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
     application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
@@ -417,3 +444,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
