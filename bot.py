@@ -1,8 +1,5 @@
 import os
 import logging
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-import math
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
@@ -20,6 +17,12 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# Credentials & Configurations
+TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
+PORT = int(os.environ.get("PORT", 10000))
+# Render ပေးမည့် သင့် Web Service ရဲ့ URL (ဥပမာ - https://your-app-name.onrender.com)
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
 
 # Database Connection
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -85,9 +88,10 @@ def get_user_profile(user_id):
     return user
 
 def calculate_distance(lat1, lon1, lat2, lon2):
+    import math
     if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
         return None
-    R = 6371.0 # Earth radius in kilometers
+    R = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
     a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
@@ -563,4 +567,69 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_id = context.user_data.get('current_target')
         msg_text = update.message.text if update.message.text else "Sent a message"
         
-       
+        context.user_data.pop('step', None)
+        await process_like(update, context, user_id, target_id, "like", custom_msg=msg_text)
+        return
+
+    user_prof = get_user_profile(user_id)
+    if not user_prof:
+        await update.message.reply_text("⚠️ Profile not found. Please click /start.")
+        return
+
+async def process_like(update, context, user_id, target_id, action, custom_msg=None):
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO matches (user_id, target_id, action, message_text) 
+            VALUES (%s, %s, %s, %s) 
+            ON CONFLICT (user_id, target_id) 
+            DO UPDATE SET action = %s, message_text = %s
+        """, (user_id, target_id, action, custom_msg, action, custom_msg))
+        
+        cur.execute("SELECT * FROM matches WHERE user_id = %s AND target_id = %s AND action = 'like'", (target_id, user_id))
+        mutual = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        if mutual:
+            try:
+                await context.bot.send_message(chat_id=target_id, text=f"🎉 You have a mutual match! Someone liked you back!")
+                await context.bot.send_message(chat_id=user_id, text=f"🎉 It's a match!")
+            except Exception:
+                pass
+
+    if update.callback_query:
+        await find_match(update, context)
+
+def main():
+    application = Application.builder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
+    application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
+    application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
+    application.add_handler(CallbackQueryHandler(skip_bio_handler, pattern="^skip_bio$"))
+    application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
+    
+    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO | filters.LOCATION) & ~filters.COMMAND, handle_message))
+
+    # Webhook mode setup for Render Web Service
+    if RENDER_EXTERNAL_URL:
+        webhook_url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/{TOKEN}"
+        logger.info(f"Starting webhook on port {PORT} with URL: {webhook_url}")
+        
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            webhook_url=webhook_url,
+            secret_token="random_secret_token_123"
+        )
+    else:
+        logger.error("RENDER_EXTERNAL_URL is not set! Falling back to polling.")
+        application.run_polling()
+
+if __name__ == "__main__":
+    main()
+
