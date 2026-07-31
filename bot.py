@@ -42,8 +42,8 @@ def init_db():
             gender TEXT,
             target_gender TEXT,
             bio TEXT,
-            media_id TEXT,
-            media_type TEXT,
+            media_id TEXT NULL,
+            media_type TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -383,9 +383,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = get_db_connection()
         if conn:
             cur = conn.cursor()
+            # ဇယားအဟောင်းမှာ column တွေက NOT NULL ဖြစ်နေရင် error တက်တတ်လို့ ပြင်ဆင်ချက်
+            cur.execute("ALTER TABLE users ALTER COLUMN media_id DROP NOT NULL;", ignore_errors=True) rescue pass if needed
+            
             cur.execute("""
-                INSERT INTO users (user_id, profile_name, age, gender, target_gender, media_id, media_type)
-                VALUES (%s, %s, %s, %s, %s, NULL, NULL)
+                INSERT INTO users (user_id, profile_name, age, gender, target_gender)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (user_id) DO UPDATE SET
                 profile_name = EXCLUDED.profile_name,
                 age = EXCLUDED.age,
@@ -454,4 +457,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
