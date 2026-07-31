@@ -41,6 +41,7 @@ def init_db():
             age TEXT,
             gender TEXT,
             target_gender TEXT,
+            city TEXT,
             bio TEXT,
             media_id TEXT,
             media_type TEXT,
@@ -173,12 +174,14 @@ async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         await update.message.reply_text(
             "✍️ Please enter your **Profile Name**:",
-            reply_markup=reply_markup
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
         )
     else:
         await update.message.reply_text(
             "✍️ Please enter your **Profile Name**:",
-            reply_markup=ReplyKeyboardRemove()
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode='Markdown'
         )
     
     context.user_data['step'] = 'waiting_name'
@@ -198,7 +201,9 @@ async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📝 Name: {user_prof['profile_name']}\n"
         f"🎂 Age: {user_prof.get('age', 'N/A')}\n"
         f"🚻 Gender: {user_prof['gender']}\n"
-        f"🎯 Target: {user_prof['target_gender']}"
+        f"🎯 Target: {user_prof['target_gender']}\n"
+        f"🏙 City: {user_prof.get('city', 'N/A')}\n"
+        f"💬 Bio: {user_prof.get('bio', 'N/A')}"
     )
     
     if user_prof.get('media_id'):
@@ -274,7 +279,13 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
     ]
     
-    caption = f"👤 **{target['profile_name']}**\n🎂 Age: {target.get('age', 'N/A')}\n🚻 Gender: {target['gender']}"
+    caption = (
+        f"👤 **{target['profile_name']}**\n"
+        f"🎂 Age: {target.get('age', 'N/A')}\n"
+        f"🚻 Gender: {target['gender']}\n"
+        f"🏙 City: {target.get('city', 'N/A')}\n"
+        f"💬 Bio: {target.get('bio', 'N/A')}"
+    )
     
     if target.get('media_id'):
         if target.get('media_type') == 'video':
@@ -316,44 +327,33 @@ async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['step'] = 'waiting_like_message'
         return
 
-async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id, target_id, action, custom_msg=None):
+async def save_user_profile(user_id, context, media_id, media_type):
+    name = context.user_data.get('reg_name')
+    age = context.user_data.get('reg_age')
+    gender = context.user_data.get('reg_gender')
+    target = context.user_data.get('reg_target')
+    city = context.user_data.get('reg_city')
+    bio = context.user_data.get('reg_bio')
+
     conn = get_db_connection()
-    if not conn:
-        return
-    cur = conn.cursor()
-    
-    cur.execute("INSERT INTO matches (user_id, target_id, action, message_text) VALUES (%s, %s, %s, %s) ON CONFLICT (user_id, target_id) DO UPDATE SET action = %s, message_text = %s", 
-                (user_id, target_id, action, custom_msg, action, custom_msg))
-    
-    cur.execute("SELECT action FROM matches WHERE user_id = %s AND target_id = %s", (target_id, user_id))
-    mutual = cur.fetchone()
-    
-    user_prof = get_user_profile(user_id)
-    target_prof = get_user_profile(target_id)
-    
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    if custom_msg:
-        notify_text = f"💌 **You received a Like and a message from {user_prof['profile_name']}!**\n\n💬 Message: _{custom_msg}_"
-    else:
-        notify_text = f"❤️ **{user_prof['profile_name']} liked your profile.**"
-
-    try:
-        await context.bot.send_message(chat_id=target_id, text=notify_text, parse_mode='Markdown')
-    except Exception:
-        pass
-
-    if mutual and mutual['action'] == 'like':
-        match_msg = f"🎉 **Match Successful!** 🎉\n\nYou and **{target_prof['profile_name']}** have liked each other."
-        try:
-            await update.effective_chat.send_message(match_msg)
-            await context.bot.send_message(chat_id=target_id, text=match_msg)
-        except Exception:
-            pass
-
-    await find_match(update, context)
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO users (user_id, profile_name, age, gender, target_gender, city, bio, media_id, media_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+            profile_name = EXCLUDED.profile_name,
+            age = EXCLUDED.age,
+            gender = EXCLUDED.gender,
+            target_gender = EXCLUDED.target_gender,
+            city = EXCLUDED.city,
+            bio = EXCLUDED.bio,
+            media_id = EXCLUDED.media_id,
+            media_type = EXCLUDED.media_type
+        """, (user_id, name, age, gender, target, city, bio, media_id, media_type))
+        conn.commit()
+        cur.close()
+        conn.close()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -375,27 +375,90 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif step == 'waiting_name':
-        name = text
-        age = context.user_data.get('reg_age')
-        gender = context.user_data.get('reg_gender')
-        target = context.user_data.get('reg_target')
+        context.user_data['reg_name'] = text
+        await update.message.reply_text(
+            "🏙 **Please enter your City (မြို့နယ်/မြို့):**",
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode='Markdown'
+        )
+        context.user_data['step'] = 'waiting_city'
+        return
 
-        conn = get_db_connection()
-        if conn:
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO users (user_id, profile_name, age, gender, target_gender, media_id, media_type)
-                VALUES (%s, %s, %s, %s, %s, NULL, NULL)
-                ON CONFLICT (user_id) DO UPDATE SET
-                profile_name = EXCLUDED.profile_name,
-                age = EXCLUDED.age,
-                gender = EXCLUDED.gender,
-                target_gender = EXCLUDED.target_gender
-            """, (user_id, name, age, gender, target))
-            conn.commit()
-            cur.close()
-            conn.close()
-            
+    elif step == 'waiting_city':
+        context.user_data['reg_city'] = text
+        await update.message.reply_text(
+            "✨ **Tell more about yourself. Who are you looking for? What do you want to do? I'll find the best matches.**",
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode='Markdown'
+        )
+        context.user_data['step'] = 'waiting_bio'
+        return
+
+    elif step == 'waiting_bio':
+        context.user_data['reg_bio'] = text
+        user_prof = get_user_profile(user_id)
+        
+        # User အဟောင်းဖြစ်ပြီး Profile မှာ ပုံဟောင်းရှိပြီးသားဆိုရင် Button နှစ်ခုပြမယ်
+        if user_prof and user_prof.get('media_id'):
+            reply_markup = ReplyKeyboardMarkup(
+                [
+                    [KeyboardButton("Leave current")],
+                    [KeyboardButton("Take from my Telegram profile")]
+                ],
+                resize_keyboard=True,
+                one_time_keyboard=True
+            )
+        else:
+            reply_markup = ReplyKeyboardRemove()
+
+        await update.message.reply_text(
+            "Send your photo or record a video (up to 15 sec).\n"
+            "Profiles with a visible face get more likes ❤️\n\n"
+            "❗️Photos of others and images from the internet are not allowed",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        context.user_data['step'] = 'waiting_media'
+        return
+
+    elif step == 'waiting_media':
+        media_id = None
+        media_type = None
+
+        if text == "Leave current":
+            user_prof = get_user_profile(user_id)
+            if user_prof:
+                media_id = user_prof.get('media_id')
+                media_type = user_prof.get('media_type', 'photo')
+            else:
+                await update.message.reply_text("⚠️ No previous profile found. Please send a photo or video.")
+                return
+
+        elif text == "Take from my Telegram profile":
+            try:
+                photos = await context.bot.get_user_profile_photos(user_id, limit=1)
+                if photos.total_count > 0:
+                    media_id = photos.photos[0][-1].file_id
+                    media_type = 'photo'
+                else:
+                    await update.message.reply_text("⚠️ No photos found in your Telegram profile. Please send a photo manually.")
+                    return
+            except Exception:
+                await update.message.reply_text("⚠️ Could not fetch Telegram profile photo. Please send a photo manually.")
+                return
+
+        else:
+            if update.message.photo:
+                media_id = update.message.photo[-1].file_id
+                media_type = 'photo'
+            elif update.message.video:
+                media_id = update.message.video.file_id
+                media_type = 'video'
+            else:
+                await update.message.reply_text("⚠️ Please send a valid Photo or Video or use the options below!")
+                return
+
+        await save_user_profile(user_id, context, media_id, media_type)
         context.user_data.clear()
         
         await update.message.reply_text(
@@ -447,7 +510,7 @@ def main():
     application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
     application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
     
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
     application.run_polling()
