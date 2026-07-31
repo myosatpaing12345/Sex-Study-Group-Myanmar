@@ -48,6 +48,12 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Database table အဟောင်းဖြစ်နေပြီး city column မပါသေးရင် အလိုအလျောက် ထည့်ပေးရန်
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS city TEXT;")
+    except Exception as e:
+        logger.info(f"City column check/add info: {e}")
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS matches (
             user_id BIGINT,
@@ -398,7 +404,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['reg_bio'] = text
         user_prof = get_user_profile(user_id)
         
-        # User အဟောင်းဖြစ်ပြီး Profile မှာ ပုံဟောင်းရှိပြီးသားဆိုရင် Button နှစ်ခုပြမယ်
         if user_prof and user_prof.get('media_id'):
             reply_markup = ReplyKeyboardMarkup(
                 [
@@ -517,4 +522,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+                              
