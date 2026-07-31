@@ -277,6 +277,54 @@ async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data["step"] = "waiting_name"
 
 
+# ---------------- NAME HANDLER (Added for Step Flow) ---------------- #
+
+async def name_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["reg_name"] = update.message.text
+    context.user_data["step"] = "waiting_media"
+
+    keyboard = ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("Leave current")],
+            [KeyboardButton("Take from my Telegram profile")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+    await update.message.reply_text(
+        "📸 Please send your photo or video for your profile, or choose an option below:",
+        reply_markup=keyboard,
+    )
+
+
+# ---------------- MESSAGE ROUTER (Fixes the stuck flow) ---------------- #
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    step = context.user_data.get("step")
+
+    if step == "waiting_age":
+        await handle_age(update, context)
+    elif step == "waiting_gender":
+        await gender_text_handler(update, context)
+    elif step == "waiting_target":
+        await target_text_handler(update, context)
+    elif step == "waiting_name":
+        await name_text_handler(update, context)
+    elif step == "waiting_media" or update.message.photo or update.message.video or update.message.text in ["Leave current", "Take from my Telegram profile"]:
+        await handle_media_input(update, context)
+    elif step == "waiting_like_message":
+        # Handle like custom message if needed
+        target_id = context.user_data.get("current_target")
+        user_id = update.effective_user.id
+        custom_msg = update.message.text
+        context.user_data["step"] = None
+        await process_like(update, context, user_id, target_id, "like", custom_msg)
+    else:
+        # Default fallback or restart
+        await start(update, context)
+
+
 # ---------------- MY PROFILE ---------------- #
 
 async def show_my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -825,21 +873,8 @@ if __name__ == "__main__":
     # Start HTTP server in a background thread so Render detects an active port and avoids early exit error
     threading.Thread(target=run_server, daemon=True).start()
 
-    # Bot Token ကို တိုက်ရိုက်ထည့်သွင်းပေးထားပါသည်
     TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
 
     application = Application.builder().token(TOKEN).build()
 
-    # Register Handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
-    application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
-    application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
-    application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
-    
-    # Message handlers for registration and inputs
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gender_text_handler))
-    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.TEXT, handle_media_input))
-
-    logger.info("Bot is starting...")
-    application.run_polling()
+    # Register H
