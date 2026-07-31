@@ -48,7 +48,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Database table အဟောင်းဖြစ်နေပြီး city column မပါသေးရင် အလိုအလျောက် ထည့်ပေးရန်
     try:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS city TEXT;")
     except Exception as e:
@@ -93,23 +92,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_prof = get_user_profile(user_id)
     
-    if user_prof and user_prof.get('profile_name'):
-        saved_age = user_prof.get('age', '18')
+    if user_prof and user_prof.get('age'):
+        saved_age = user_prof.get('age')
         reply_markup = ReplyKeyboardMarkup(
             [[KeyboardButton(str(saved_age))]],
             resize_keyboard=True,
             one_time_keyboard=True
         )
-        await update.message.reply_text(
-            "Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
-            reply_markup=reply_markup
-        )
-        context.user_data['step'] = 'waiting_age'
-        return
+    else:
+        reply_markup = ReplyKeyboardRemove()
 
     await update.message.reply_text(
-        "Welcome to Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
-        reply_markup=ReplyKeyboardRemove()
+        "Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
+        reply_markup=reply_markup
     )
     context.user_data['step'] = 'waiting_age'
 
@@ -333,13 +328,45 @@ async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['step'] = 'waiting_like_message'
         return
 
+async def skip_bio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    context.user_data['reg_bio'] = "N/A"
+    user_id = query.from_user.id
+    user_prof = get_user_profile(user_id)
+    
+    if user_prof and user_prof.get('media_id'):
+        reply_markup = ReplyKeyboardMarkup(
+            [
+                [KeyboardButton("Leave current")],
+                [KeyboardButton("Take from my Telegram profile")]
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+    else:
+        reply_markup = ReplyKeyboardRemove()
+
+    await query.message.edit_text(
+        "Tell more about yourself. Who are you looking for? What do you want to do? I'll find the best matches."
+    )
+    await query.message.reply_text(
+        "Send your photo or record a video (up to 15 sec).\n"
+        "Profiles with a visible face get more likes ❤️\n\n"
+        "❗️Photos of others and images from the internet are not allowed",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+    context.user_data['step'] = 'waiting_media'
+
 async def save_user_profile(user_id, context, media_id, media_type):
     name = context.user_data.get('reg_name')
     age = context.user_data.get('reg_age')
     gender = context.user_data.get('reg_gender')
     target = context.user_data.get('reg_target')
     city = context.user_data.get('reg_city')
-    bio = context.user_data.get('reg_bio')
+    bio = context.user_data.get('reg_bio', 'N/A')
 
     conn = get_db_connection()
     if conn:
@@ -382,9 +409,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif step == 'waiting_name':
         context.user_data['reg_name'] = text
+        user_prof = get_user_profile(user_id)
+        
+        if user_prof and user_prof.get('city'):
+            saved_city = user_prof.get('city')
+            reply_markup = ReplyKeyboardMarkup(
+                [[KeyboardButton(saved_city)]],
+                resize_keyboard=True,
+                one_time_keyboard=True
+            )
+        else:
+            reply_markup = ReplyKeyboardRemove()
+
         await update.message.reply_text(
             "🏙 **Please enter your City (မြို့နယ်/မြို့):**",
-            reply_markup=ReplyKeyboardRemove(),
+            reply_markup=reply_markup,
             parse_mode='Markdown'
         )
         context.user_data['step'] = 'waiting_city'
@@ -392,10 +431,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif step == 'waiting_city':
         context.user_data['reg_city'] = text
+        
+        user_prof = get_user_profile(user_id)
+        if user_prof and user_prof.get('media_id'):
+            reply_markup = ReplyKeyboardMarkup(
+                [
+                    [KeyboardButton("Leave current")],
+                    [KeyboardButton("Take from my Telegram profile")]
+                ],
+                resize_keyboard=True,
+                one_time_keyboard=True
+            )
+        else:
+            reply_markup = ReplyKeyboardRemove()
+
+        skip_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("⏭ Skip", callback_data="skip_bio")]])
+
         await update.message.reply_text(
-            "✨ **Tell more about yourself. Who are you looking for? What do you want to do? I'll find the best matches.**",
-            reply_markup=ReplyKeyboardRemove(),
-            parse_mode='Markdown'
+            "Tell more about yourself. Who are you looking for? What do you want to do? I'll find the best matches.",
+            reply_markup=skip_keyboard
         )
         context.user_data['step'] = 'waiting_bio'
         return
@@ -513,13 +567,7 @@ def main():
     application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
     application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
     application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
+    application.add_handler(CallbackQueryHandler(skip_bio_handler, pattern="^skip_bio$"))
     application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
     
-    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND, handle_message))
-
-    print("Bot is running...")
-    application.run_polling()
-
-if __name__ == "__main__":
-    main()
-                              
+    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | 
