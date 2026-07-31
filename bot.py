@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 # Credentials & Configurations
 TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
 PORT = int(os.environ.get("PORT", 10000))
-# Render ပေးမည့် သင့် Web Service ရဲ့ URL (ဥပမာ - https://your-app-name.onrender.com)
 RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
 
 # Database Connection
@@ -563,4 +562,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    elif step == 'waiting
+    elif step == 'waiting_like_message':
+        target_id = context.user_data.get('current_target')
+        ms
