@@ -35,6 +35,28 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ---------------- RENDER KEEP-ALIVE HTTP SERVER ---------------- #
+
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running successfully!")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, format, *args):
+        pass
+
+def run_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    logger.info(f"HTTP server started on port {port}")
+    server.serve_forever()
+
+
 # ---------------- DATABASE ---------------- #
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -851,33 +873,12 @@ async def handle_media_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 
-# ---------------- RENDER KEEP-ALIVE HTTP SERVER ---------------- #
-
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running successfully!")
-
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
-
-def run_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-    server.serve_forever()
-
-
 # ---------------- MAIN FUNCTION (BOT START) ---------------- #
 
 if __name__ == "__main__":
-    # Start HTTP server in a background thread so Render detects an active port and avoids early exit error
+    # Start HTTP server immediately in a background thread so Render detects active port
     threading.Thread(target=run_server, daemon=True).start()
 
     TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
 
-    application = Application.builder().token(TOKEN).build()
-
-    # Register Handlers
-    application.add_handler(CommandHand
+    application = Application.bui
