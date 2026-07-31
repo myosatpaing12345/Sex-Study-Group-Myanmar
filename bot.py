@@ -277,7 +277,7 @@ async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data["step"] = "waiting_name"
 
 
-# ---------------- NAME HANDLER (Added for Step Flow) ---------------- #
+# ---------------- NAME HANDLER ---------------- #
 
 async def name_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["reg_name"] = update.message.text
@@ -298,7 +298,7 @@ async def name_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ---------------- MESSAGE ROUTER (Fixes the stuck flow) ---------------- #
+# ---------------- MESSAGE ROUTER ---------------- #
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     step = context.user_data.get("step")
@@ -314,14 +314,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif step == "waiting_media" or update.message.photo or update.message.video or update.message.text in ["Leave current", "Take from my Telegram profile"]:
         await handle_media_input(update, context)
     elif step == "waiting_like_message":
-        # Handle like custom message if needed
         target_id = context.user_data.get("current_target")
         user_id = update.effective_user.id
         custom_msg = update.message.text
         context.user_data["step"] = None
         await process_like(update, context, user_id, target_id, "like", custom_msg)
     else:
-        # Default fallback or restart
         await start(update, context)
 
 
@@ -861,6 +859,10 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is running successfully!")
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
 def run_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
@@ -877,4 +879,5 @@ if __name__ == "__main__":
 
     application = Application.builder().token(TOKEN).build()
 
-    # Register H
+    # Register Handlers
+    application.add_handler(CommandHand
