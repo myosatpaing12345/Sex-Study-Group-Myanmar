@@ -881,4 +881,5 @@ if __name__ == "__main__":
 
     TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
 
-    application = Application.bui
+    application = (
+        Appli
