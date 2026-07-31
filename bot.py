@@ -268,7 +268,6 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     cur = conn.cursor()
     
-    # Get all potential matches except self and already acted profiles
     cur.execute("""
         SELECT * FROM users 
         WHERE user_id != %s AND user_id NOT IN (
@@ -287,7 +286,6 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Sort candidates by distance if location exists
     my_lat = user_prof.get('latitude')
     my_lon = user_prof.get('longitude')
 
@@ -562,4 +560,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif step == 'waiting_like_message':
-        target_id = context.user_dat
+        target_id = context.user_data.get('current_target')
+        msg_text = update.message.text if update.message.text else "Sent a message"
+        
+       
