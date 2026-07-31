@@ -802,5 +802,44 @@ async def handle_media_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(
         "🏠 Main Menu",
         reply_markup=get_main_menu(),
-        )
-                                 
+    )
+
+
+# ---------------- RENDER KEEP-ALIVE HTTP SERVER ---------------- #
+
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running successfully!")
+
+def run_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
+
+
+# ---------------- MAIN FUNCTION (BOT START) ---------------- #
+
+if __name__ == "__main__":
+    # Start HTTP server in a background thread so Render detects an active port and avoids early exit error
+    threading.Thread(target=run_server, daemon=True).start()
+
+    # Bot Token ကို တိုက်ရိုက်ထည့်သွင်းပေးထားပါသည်
+    TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
+
+    application = Application.builder().token(TOKEN).build()
+
+    # Register Handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
+    application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
+    application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
+    application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
+    
+    # Message handlers for registration and inputs
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gender_text_handler))
+    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.TEXT, handle_media_input))
+
+    logger.info("Bot is starting...")
+    application.run_polling()
