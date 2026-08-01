@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Database Connection
 DATABASE_URL = os.environ.get("DATABASE_URL")
+ADMIN_USER_IDS = [int(x) for x in os.environ.get("ADMIN_USER_IDS", "").split(",") if x.strip()]
 
 def get_db_connection():
     if not DATABASE_URL:
@@ -48,7 +49,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Database table အဟောင်းဖြစ်နေပြီး city column မပါသေးရင် အလိုအလျောက် ထည့်ပေးရန်
     try:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS city TEXT;")
     except Exception as e:
@@ -282,7 +282,8 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❤️ Like", callback_data="match_like"),
          InlineKeyboardButton("💌 Message with Like", callback_data="match_msg_like")],
         [InlineKeyboardButton("👎 Pass", callback_data="match_pass"),
-         InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
+         InlineKeyboardButton("🚨 Report", callback_data="match_report")],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
     ]
     
     caption = (
@@ -300,6 +301,44 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_photo(photo=target['media_id'], caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         await query.message.reply_text(caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, target_id: int, action: str, custom_msg: str = None):
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    
+    cur.execute("""
+        INSERT INTO matches (user_id, target_id, action, message_text) 
+        VALUES (%s, %s, %s, %s) 
+        ON CONFLICT (user_id, target_id) 
+        DO UPDATE SET action = %s, message_text = %s
+    """, (user_id, target_id, action, custom_msg, action, custom_msg))
+    
+    cur.execute("SELECT action FROM matches WHERE user_id = %s AND target_id = %s", (target_id, user_id))
+    target_action = cur.fetchone()
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    sender_prof = get_user_profile(user_id)
+    
+    try:
+        if target_action and target_action['action'] in ['like', 'msg_like']:
+            match_text = f"🎉 **It's a Match!**\nYou and {sender_prof['profile_name']} liked each other! ❤️\nChat with them directly!"
+            if custom_msg:
+                match_text += f"\n\nMessage: {custom_msg}"
+            await context.bot.send_message(chat_id=target_id, text=match_text, parse_mode='Markdown')
+            if update.callback_query:
+                await update.callback_query.message.reply_text(f"🎉 **It's a Match with {sender_prof['profile_name']}!** ❤️", parse_mode='Markdown')
+        else:
+            if custom_msg:
+                await context.bot.send_message(chat_id=target_id, text=f"💌 You received a like and a message from **{sender_prof['profile_name']}**:\n\n{custom_msg}", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error sending match notification: {e}")
+
+    await find_match(update, context)
 
 async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -329,8 +368,20 @@ async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     if action_type == "match_msg_like":
-        await query.message.edit_text("💌 Please send your message (or photo/video) to send along with your like:")
+        await query.message.edit_text("💌 Please send your message (or text) to send along with your like:")
         context.user_data['step'] = 'waiting_like_message'
+        return
+
+    if action_type == "match_report":
+        conn = get_db_connection()
+        if conn:
+            cur = conn.cursor()
+            cur.execute("INSERT INTO matches (user_id, target_id, action) VALUES (%s, %s, 'report') ON CONFLICT (user_id, target_id) DO UPDATE SET action = 'report'", (user_id, target_id))
+            conn.commit()
+            cur.close()
+            conn.close()
+        await query.message.reply_text("🚨 Profile reported. Thank you for keeping the community safe.")
+        await find_match(update, context)
         return
 
 async def save_user_profile(user_id, context, media_id, media_type):
@@ -360,6 +411,36 @@ async def save_user_profile(user_id, context, media_id, media_type):
         conn.commit()
         cur.close()
         conn.close()
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if ADMIN_USER_IDS and user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("⛔️ You are not authorized to use this command.")
+        return
+
+    msg = " ".join(context.args)
+    if not msg:
+        await update.message.reply_text("⚠️ Please provide a message to broadcast. Usage: `/broadcast Your message here`", parse_mode='Markdown')
+        return
+
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    cur.execute("SELECT user_id FROM users")
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    success = 0
+    for u in users:
+        try:
+            await context.bot.send_message(chat_id=u['user_id'], text=f"📢 **Announcement:**\n\n{msg}", parse_mode='Markdown')
+            success += 1
+        except Exception:
+            pass
+
+    await update.message.reply_text(f"✅ Broadcast sent successfully to {success} users.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -475,51 +556,4 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown',
             reply_markup=get_main_menu()
         )
-        return
-
-    elif step == 'waiting_like_message':
-        target_id = context.user_data.get('current_target')
-        msg_text = update.message.text if update.message.text else "Sent a message"
-        
-        context.user_data.pop('step', None)
-        await process_like(update, context, user_id, target_id, "like", custom_msg=msg_text)
-        return
-
-    user_prof = get_user_profile(user_id)
-    if not user_prof:
-        await update.message.reply_text("⚠️ Profile not found. Please click /start.")
-        return
-
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-    server.serve_forever()
-
-def main():
-    server_thread = threading.Thread(target=run_web_server, daemon=True)
-    server_thread.start()
-
-    token = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
-
-    application = Application.builder().token(token).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
-    application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
-    application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
-    application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
-    
-    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND, handle_message))
-
-    print("Bot is running...")
-    application.run_polling()
-
-if __name__ == "__main__":
-    main()
-                              
+      
