@@ -1,7 +1,5 @@
 import os
 import logging
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
@@ -14,15 +12,15 @@ from telegram.ext import (
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-# Enable logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database Connection
-DATABASE_URL = os.environ.get("DATABASE_URL")
-ADMIN_USER_IDS = [int(x) for x in os.environ.get("ADMIN_USER_IDS", "").split(",") if x.strip()]
+TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
+PORT = int(os.environ.get("PORT", 10000))
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
+
+# Database URL ထည့်သွင်းပြီးသား (Render ပေါ်မှာ Environment Variable မရှိရင်တောင် အလုပ်လုပ်အောင် ထည့်ပေးထားပါတယ်)
+DATABASE_URL = os.environ.get("DATABASE_URL") or "postgres://match_db2_user:mpEoB2aqdij5vFHaSlxEq6oT4anRtVDW@dpg-d9mi39fqj5pc73d2kr8g-a/match_db2"
 
 def get_db_connection():
     if not DATABASE_URL:
@@ -43,6 +41,8 @@ def init_db():
             gender TEXT,
             target_gender TEXT,
             city TEXT,
+            latitude DOUBLE PRECISION,
+            longitude DOUBLE PRECISION,
             bio TEXT,
             media_id TEXT,
             media_type TEXT,
@@ -51,8 +51,10 @@ def init_db():
     """)
     try:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS city TEXT;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;")
     except Exception as e:
-        logger.info(f"City column check/add info: {e}")
+        logger.info(f"Columns check info: {e}")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS matches (
@@ -80,6 +82,17 @@ def get_user_profile(user_id):
     conn.close()
     return user
 
+def calculate_distance(lat1, lon1, lat2, lon2):
+    import math
+    if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+        return None
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+    c = 2 * math.asin(math.sqrt(a))
+    return R * c
+
 def get_main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔍 Find Match", callback_data="find_match")],
@@ -93,23 +106,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_prof = get_user_profile(user_id)
     
-    if user_prof and user_prof.get('profile_name'):
-        saved_age = user_prof.get('age', '18')
+    if user_prof and user_prof.get('age'):
+        saved_age = user_prof.get('age')
         reply_markup = ReplyKeyboardMarkup(
             [[KeyboardButton(str(saved_age))]],
             resize_keyboard=True,
             one_time_keyboard=True
         )
-        await update.message.reply_text(
-            "Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
-            reply_markup=reply_markup
-        )
-        context.user_data['step'] = 'waiting_age'
-        return
+    else:
+        reply_markup = ReplyKeyboardRemove()
 
     await update.message.reply_text(
-        "Welcome to Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
-        reply_markup=ReplyKeyboardRemove()
+        "Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
+        reply_markup=reply_markup
     )
     context.user_data['step'] = 'waiting_age'
 
@@ -124,7 +133,7 @@ async def handle_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     await update.message.reply_text(
-        "To get started, please select your gender:",
+        "Specify your gender",
         reply_markup=reply_markup
     )
     context.user_data['step'] = 'waiting_gender'
@@ -132,9 +141,9 @@ async def handle_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
-    if "Male" in text:
+    if "Male" in text or "male" in text:
         gender = "male"
-    elif "Female" in text:
+    elif "Female" in text or "Women" in text or "female" in text:
         gender = "female"
     else:
         return
@@ -149,7 +158,7 @@ async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     
     await update.message.reply_text(
-        "🎯 Who are you looking for?",
+        "Who are you looking for?",
         reply_markup=reply_markup
     )
     context.user_data['step'] = 'waiting_target'
@@ -159,7 +168,7 @@ async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     if "Male" in text:
         target = "male"
-    elif "Female" in text:
+    elif "Female" in text or "Women" in text:
         target = "female"
     elif "No matter" in text:
         target = "any"
@@ -262,19 +271,29 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SELECT * FROM users 
         WHERE user_id != %s AND user_id NOT IN (
             SELECT target_id FROM matches WHERE user_id = %s
-        ) LIMIT 1
+        )
     """, (user_id, user_id))
     
-    target = cur.fetchone()
+    candidates = cur.fetchall()
     cur.close()
     conn.close()
 
-    if not target:
+    if not candidates:
         await query.message.edit_text(
             "😔 No more new profiles available right now. Please check back later.",
             reply_markup=get_main_menu()
         )
         return
+
+    my_lat = user_prof.get('latitude')
+    my_lon = user_prof.get('longitude')
+
+    def distance_sort_key(c):
+        dist = calculate_distance(my_lat, my_lon, c.get('latitude'), c.get('longitude'))
+        return dist if dist is not None else float('inf')
+
+    candidates.sort(key=distance_sort_key)
+    target = candidates[0]
 
     context.user_data['current_target'] = target['user_id']
     
@@ -282,15 +301,17 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❤️ Like", callback_data="match_like"),
          InlineKeyboardButton("💌 Message with Like", callback_data="match_msg_like")],
         [InlineKeyboardButton("👎 Pass", callback_data="match_pass"),
-         InlineKeyboardButton("🚨 Report", callback_data="match_report")],
-        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
+         InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
     ]
     
+    dist_val = calculate_distance(my_lat, my_lon, target.get('latitude'), target.get('longitude'))
+    dist_str = f"{dist_val:.1f} km away" if dist_val is not None else "N/A"
+
     caption = (
         f"👤 **{target['profile_name']}**\n"
         f"🎂 Age: {target.get('age', 'N/A')}\n"
         f"🚻 Gender: {target['gender']}\n"
-        f"🏙 City: {target.get('city', 'N/A')}\n"
+        f"🏙 City: {target.get('city', 'N/A')} ({dist_str})\n"
         f"💬 Bio: {target.get('bio', 'N/A')}"
     )
     
@@ -301,44 +322,6 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_photo(photo=target['media_id'], caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         await query.message.reply_text(caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def process_like(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, target_id: int, action: str, custom_msg: str = None):
-    conn = get_db_connection()
-    if not conn:
-        return
-    cur = conn.cursor()
-    
-    cur.execute("""
-        INSERT INTO matches (user_id, target_id, action, message_text) 
-        VALUES (%s, %s, %s, %s) 
-        ON CONFLICT (user_id, target_id) 
-        DO UPDATE SET action = %s, message_text = %s
-    """, (user_id, target_id, action, custom_msg, action, custom_msg))
-    
-    cur.execute("SELECT action FROM matches WHERE user_id = %s AND target_id = %s", (target_id, user_id))
-    target_action = cur.fetchone()
-    
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    sender_prof = get_user_profile(user_id)
-    
-    try:
-        if target_action and target_action['action'] in ['like', 'msg_like']:
-            match_text = f"🎉 **It's a Match!**\nYou and {sender_prof['profile_name']} liked each other! ❤️\nChat with them directly!"
-            if custom_msg:
-                match_text += f"\n\nMessage: {custom_msg}"
-            await context.bot.send_message(chat_id=target_id, text=match_text, parse_mode='Markdown')
-            if update.callback_query:
-                await update.callback_query.message.reply_text(f"🎉 **It's a Match with {sender_prof['profile_name']}!** ❤️", parse_mode='Markdown')
-        else:
-            if custom_msg:
-                await context.bot.send_message(chat_id=target_id, text=f"💌 You received a like and a message from **{sender_prof['profile_name']}**:\n\n{custom_msg}", parse_mode='Markdown')
-    except Exception as e:
-        logger.error(f"Error sending match notification: {e}")
-
-    await find_match(update, context)
 
 async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -368,21 +351,41 @@ async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     if action_type == "match_msg_like":
-        await query.message.edit_text("💌 Please send your message (or text) to send along with your like:")
+        await query.message.edit_text("💌 Please send your message (or photo/video) to send along with your like:")
         context.user_data['step'] = 'waiting_like_message'
         return
 
-    if action_type == "match_report":
-        conn = get_db_connection()
-        if conn:
-            cur = conn.cursor()
-            cur.execute("INSERT INTO matches (user_id, target_id, action) VALUES (%s, %s, 'report') ON CONFLICT (user_id, target_id) DO UPDATE SET action = 'report'", (user_id, target_id))
-            conn.commit()
-            cur.close()
-            conn.close()
-        await query.message.reply_text("🚨 Profile reported. Thank you for keeping the community safe.")
-        await find_match(update, context)
-        return
+async def skip_bio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    context.user_data['reg_bio'] = "N/A"
+    user_id = query.from_user.id
+    user_prof = get_user_profile(user_id)
+    
+    if user_prof and user_prof.get('media_id'):
+        reply_markup = ReplyKeyboardMarkup(
+            [
+                [KeyboardButton("Leave current")],
+                [KeyboardButton("Take from my Telegram profile")]
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+    else:
+        reply_markup = ReplyKeyboardRemove()
+
+    await query.message.edit_text(
+        "Tell more about yourself. Who are you looking for? What do you want to do? I'll find the best matches."
+    )
+    await query.message.reply_text(
+        "Send your photo or record a video (up to 15 sec).\n"
+        "Profiles with a visible face get more likes ❤️\n\n"
+        "❗️Photos of others and images from the internet are not allowed",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+    context.user_data['step'] = 'waiting_media'
 
 async def save_user_profile(user_id, context, media_id, media_type):
     name = context.user_data.get('reg_name')
@@ -390,57 +393,31 @@ async def save_user_profile(user_id, context, media_id, media_type):
     gender = context.user_data.get('reg_gender')
     target = context.user_data.get('reg_target')
     city = context.user_data.get('reg_city')
-    bio = context.user_data.get('reg_bio')
+    lat = context.user_data.get('reg_lat')
+    lon = context.user_data.get('reg_lon')
+    bio = context.user_data.get('reg_bio', 'N/A')
 
     conn = get_db_connection()
     if conn:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO users (user_id, profile_name, age, gender, target_gender, city, bio, media_id, media_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO users (user_id, profile_name, age, gender, target_gender, city, latitude, longitude, bio, media_id, media_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id) DO UPDATE SET
             profile_name = EXCLUDED.profile_name,
             age = EXCLUDED.age,
             gender = EXCLUDED.gender,
             target_gender = EXCLUDED.target_gender,
             city = EXCLUDED.city,
+            latitude = EXCLUDED.latitude,
+            longitude = EXCLUDED.longitude,
             bio = EXCLUDED.bio,
             media_id = EXCLUDED.media_id,
             media_type = EXCLUDED.media_type
-        """, (user_id, name, age, gender, target, city, bio, media_id, media_type))
+        """, (user_id, name, age, gender, target, city, lat, lon, bio, media_id, media_type))
         conn.commit()
         cur.close()
         conn.close()
-
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if ADMIN_USER_IDS and user_id not in ADMIN_USER_IDS:
-        await update.message.reply_text("⛔️ You are not authorized to use this command.")
-        return
-
-    msg = " ".join(context.args)
-    if not msg:
-        await update.message.reply_text("⚠️ Please provide a message to broadcast. Usage: `/broadcast Your message here`", parse_mode='Markdown')
-        return
-
-    conn = get_db_connection()
-    if not conn:
-        return
-    cur = conn.cursor()
-    cur.execute("SELECT user_id FROM users")
-    users = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    success = 0
-    for u in users:
-        try:
-            await context.bot.send_message(chat_id=u['user_id'], text=f"📢 **Announcement:**\n\n{msg}", parse_mode='Markdown')
-            success += 1
-        except Exception:
-            pass
-
-    await update.message.reply_text(f"✅ Broadcast sent successfully to {success} users.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -452,31 +429,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif step == 'waiting_gender':
-        if "Male" in text or "Female" in text:
+        if "Male" in text or "Female" in text or "male" in text or "female" in text or "Women" in text:
             await gender_text_handler(update, context)
         return
         
     elif step == 'waiting_target':
-        if "Male" in text or "Female" in text or "No matter" in text:
+        if "Male" in text or "Female" in text or "No matter" in text or "Women" in text:
             await target_text_handler(update, context)
         return
 
     elif step == 'waiting_name':
         context.user_data['reg_name'] = text
+        user_prof = get_user_profile(user_id)
+        
+        buttons = []
+        if user_prof and user_prof.get('city'):
+            buttons.append([KeyboardButton(user_prof.get('city'))])
+        buttons.append([KeyboardButton("📍 Share my location", request_location=True)])
+        
+        reply_markup = ReplyKeyboardMarkup(
+            buttons,
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+
         await update.message.reply_text(
-            "🏙 **Please enter your City (မြို့နယ်/မြို့):**",
-            reply_markup=ReplyKeyboardRemove(),
-            parse_mode='Markdown'
+            "What city are you from?",
+            reply_markup=reply_markup
         )
         context.user_data['step'] = 'waiting_city'
         return
 
     elif step == 'waiting_city':
-        context.user_data['reg_city'] = text
+        if update.message.location:
+            lat = update.message.location.latitude
+            lon = update.message.location.longitude
+            context.user_data['reg_lat'] = lat
+            context.user_data['reg_lon'] = lon
+            context.user_data['reg_city'] = "Nearby Location"
+        else:
+            context.user_data['reg_city'] = text
+            context.user_data['reg_lat'] = None
+            context.user_data['reg_lon'] = None
+        
+        skip_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("⏭ Skip", callback_data="skip_bio")]])
+
         await update.message.reply_text(
-            "✨ **Tell more about yourself. Who are you looking for? What do you want to do? I'll find the best matches.**",
-            reply_markup=ReplyKeyboardRemove(),
-            parse_mode='Markdown'
+            "Tell more about yourself. Who are you looking for? What do you want to do? I'll find the best matches.",
+            reply_markup=skip_keyboard
         )
         context.user_data['step'] = 'waiting_bio'
         return
@@ -555,5 +555,4 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🏠 **Main Menu**",
             parse_mode='Markdown',
             reply_markup=get_main_menu()
-        )
-      
+  
