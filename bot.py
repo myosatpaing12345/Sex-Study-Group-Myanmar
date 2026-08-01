@@ -1,5 +1,7 @@
 import os
 import logging
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
@@ -20,6 +22,20 @@ logger = logging.getLogger(__name__)
 
 # Credentials & Configurations
 TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
+PORT = int(os.environ.get("PORT", 10000))
+
+# Dummy HTTP Server to keep Render port open for Polling
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running with polling!")
+
+def run_server():
+    server_address = ('0.0.0.0', PORT)
+    httpd = HTTPServer(server_address, SimpleHandler)
+    logger.info(f"Starting dummy web server on port {PORT}...")
+    httpd.serve_forever()
 
 # Database Connection
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -547,21 +563,4 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
         await save_user_profile(user_id, context, media_id, media_type)
-        context.user_data.clear()
-        
-        await update.message.reply_text(
-            "✅ Your profile has been successfully saved! 🎉",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        await update.message.reply_text(
-            "🏠 **Main Menu**",
-            parse_mode='Markdown',
-            reply_markup=get_main_menu()
-        )
-        return
-
-    elif step == 'waiting_like_message':
-        target_id = context.user_data.get('current_target')
-        msg_text = update.message.text if update.message.text else "Sent a message"
-        
-        context.use
+        context.user_data.cle
