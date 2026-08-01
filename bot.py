@@ -20,23 +20,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Credentials & Configurations
-TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
-PORT = int(os.environ.get("PORT", 10000))
-
-# Dummy HTTP Server to keep Render port open for Polling
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running with polling!")
-
-def run_server():
-    server_address = ('0.0.0.0', PORT)
-    httpd = HTTPServer(server_address, SimpleHandler)
-    logger.info(f"Starting dummy web server on port {PORT}...")
-    httpd.serve_forever()
-
 # Database Connection
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -59,20 +42,17 @@ def init_db():
             gender TEXT,
             target_gender TEXT,
             city TEXT,
-            latitude DOUBLE PRECISION,
-            longitude DOUBLE PRECISION,
             bio TEXT,
             media_id TEXT,
             media_type TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Database table အဟောင်းဖြစ်နေပြီး city column မပါသေးရင် အလိုအလျောက် ထည့်ပေးရန်
     try:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS city TEXT;")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;")
     except Exception as e:
-        logger.info(f"Columns check/add info: {e}")
+        logger.info(f"City column check/add info: {e}")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS matches (
@@ -100,17 +80,6 @@ def get_user_profile(user_id):
     conn.close()
     return user
 
-def calculate_distance(lat1, lon1, lat2, lon2):
-    import math
-    if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
-        return None
-    R = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
-    c = 2 * math.asin(math.sqrt(a))
-    return R * c
-
 def get_main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔍 Find Match", callback_data="find_match")],
@@ -124,19 +93,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_prof = get_user_profile(user_id)
     
-    if user_prof and user_prof.get('age'):
-        saved_age = user_prof.get('age')
+    if user_prof and user_prof.get('profile_name'):
+        saved_age = user_prof.get('age', '18')
         reply_markup = ReplyKeyboardMarkup(
             [[KeyboardButton(str(saved_age))]],
             resize_keyboard=True,
             one_time_keyboard=True
         )
-    else:
-        reply_markup = ReplyKeyboardRemove()
+        await update.message.reply_text(
+            "Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
+            reply_markup=reply_markup
+        )
+        context.user_data['step'] = 'waiting_age'
+        return
 
     await update.message.reply_text(
-        "Welcome back Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
-        reply_markup=reply_markup
+        "Welcome to Sex Study Group Myanmar🎉\nEveryone Sex Partnerကိုရှာလိုက်ကြရအောင်🤪💋\n\nHow old are you?\n\n⚠️ Profiles with an inaccurate age may be restricted",
+        reply_markup=ReplyKeyboardRemove()
     )
     context.user_data['step'] = 'waiting_age'
 
@@ -151,7 +124,7 @@ async def handle_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     await update.message.reply_text(
-        "Specify your gender",
+        "To get started, please select your gender:",
         reply_markup=reply_markup
     )
     context.user_data['step'] = 'waiting_gender'
@@ -159,9 +132,9 @@ async def handle_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
-    if "Male" in text or "male" in text:
+    if "Male" in text:
         gender = "male"
-    elif "Female" in text or "Women" in text or "female" in text:
+    elif "Female" in text:
         gender = "female"
     else:
         return
@@ -176,7 +149,7 @@ async def gender_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     
     await update.message.reply_text(
-        "Who are you looking for?",
+        "🎯 Who are you looking for?",
         reply_markup=reply_markup
     )
     context.user_data['step'] = 'waiting_target'
@@ -186,7 +159,7 @@ async def target_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     if "Male" in text:
         target = "male"
-    elif "Female" in text or "Women" in text:
+    elif "Female" in text:
         target = "female"
     elif "No matter" in text:
         target = "any"
@@ -289,29 +262,19 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SELECT * FROM users 
         WHERE user_id != %s AND user_id NOT IN (
             SELECT target_id FROM matches WHERE user_id = %s
-        )
+        ) LIMIT 1
     """, (user_id, user_id))
     
-    candidates = cur.fetchall()
+    target = cur.fetchone()
     cur.close()
     conn.close()
 
-    if not candidates:
+    if not target:
         await query.message.edit_text(
             "😔 No more new profiles available right now. Please check back later.",
             reply_markup=get_main_menu()
         )
         return
-
-    my_lat = user_prof.get('latitude')
-    my_lon = user_prof.get('longitude')
-
-    def distance_sort_key(c):
-        dist = calculate_distance(my_lat, my_lon, c.get('latitude'), c.get('longitude'))
-        return dist if dist is not None else float('inf')
-
-    candidates.sort(key=distance_sort_key)
-    target = candidates[0]
 
     context.user_data['current_target'] = target['user_id']
     
@@ -322,14 +285,11 @@ async def find_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
     ]
     
-    dist_val = calculate_distance(my_lat, my_lon, target.get('latitude'), target.get('longitude'))
-    dist_str = f"{dist_val:.1f} km away" if dist_val is not None else "N/A"
-
     caption = (
         f"👤 **{target['profile_name']}**\n"
         f"🎂 Age: {target.get('age', 'N/A')}\n"
         f"🚻 Gender: {target['gender']}\n"
-        f"🏙 City: {target.get('city', 'N/A')} ({dist_str})\n"
+        f"🏙 City: {target.get('city', 'N/A')}\n"
         f"💬 Bio: {target.get('bio', 'N/A')}"
     )
     
@@ -373,66 +333,30 @@ async def match_action_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['step'] = 'waiting_like_message'
         return
 
-async def skip_bio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    context.user_data['reg_bio'] = "N/A"
-    user_id = query.from_user.id
-    user_prof = get_user_profile(user_id)
-    
-    if user_prof and user_prof.get('media_id'):
-        reply_markup = ReplyKeyboardMarkup(
-            [
-                [KeyboardButton("Leave current")],
-                [KeyboardButton("Take from my Telegram profile")]
-            ],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
-    else:
-        reply_markup = ReplyKeyboardRemove()
-
-    await query.message.edit_text(
-        "Tell more about yourself. Who are you looking for? What do you want to do? I'll find the best matches."
-    )
-    await query.message.reply_text(
-        "Send your photo or record a video (up to 15 sec).\n"
-        "Profiles with a visible face get more likes ❤️\n\n"
-        "❗️Photos of others and images from the internet are not allowed",
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
-    context.user_data['step'] = 'waiting_media'
-
 async def save_user_profile(user_id, context, media_id, media_type):
     name = context.user_data.get('reg_name')
     age = context.user_data.get('reg_age')
     gender = context.user_data.get('reg_gender')
     target = context.user_data.get('reg_target')
     city = context.user_data.get('reg_city')
-    lat = context.user_data.get('reg_lat')
-    lon = context.user_data.get('reg_lon')
-    bio = context.user_data.get('reg_bio', 'N/A')
+    bio = context.user_data.get('reg_bio')
 
     conn = get_db_connection()
     if conn:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO users (user_id, profile_name, age, gender, target_gender, city, latitude, longitude, bio, media_id, media_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO users (user_id, profile_name, age, gender, target_gender, city, bio, media_id, media_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id) DO UPDATE SET
             profile_name = EXCLUDED.profile_name,
             age = EXCLUDED.age,
             gender = EXCLUDED.gender,
             target_gender = EXCLUDED.target_gender,
             city = EXCLUDED.city,
-            latitude = EXCLUDED.latitude,
-            longitude = EXCLUDED.longitude,
             bio = EXCLUDED.bio,
             media_id = EXCLUDED.media_id,
             media_type = EXCLUDED.media_type
-        """, (user_id, name, age, gender, target, city, lat, lon, bio, media_id, media_type))
+        """, (user_id, name, age, gender, target, city, bio, media_id, media_type))
         conn.commit()
         cur.close()
         conn.close()
@@ -447,54 +371,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif step == 'waiting_gender':
-        if "Male" in text or "Female" in text or "male" in text or "female" in text or "Women" in text:
+        if "Male" in text or "Female" in text:
             await gender_text_handler(update, context)
         return
         
     elif step == 'waiting_target':
-        if "Male" in text or "Female" in text or "No matter" in text or "Women" in text:
+        if "Male" in text or "Female" in text or "No matter" in text:
             await target_text_handler(update, context)
         return
 
     elif step == 'waiting_name':
         context.user_data['reg_name'] = text
-        user_prof = get_user_profile(user_id)
-        
-        buttons = []
-        if user_prof and user_prof.get('city'):
-            buttons.append([KeyboardButton(user_prof.get('city'))])
-        buttons.append([KeyboardButton("📍 Share my location", request_location=True)])
-        
-        reply_markup = ReplyKeyboardMarkup(
-            buttons,
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
-
         await update.message.reply_text(
-            "What city are you from?",
-            reply_markup=reply_markup
+            "🏙 **Please enter your City (မြို့နယ်/မြို့):**",
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode='Markdown'
         )
         context.user_data['step'] = 'waiting_city'
         return
 
     elif step == 'waiting_city':
-        if update.message.location:
-            lat = update.message.location.latitude
-            lon = update.message.location.longitude
-            context.user_data['reg_lat'] = lat
-            context.user_data['reg_lon'] = lon
-            context.user_data['reg_city'] = "Nearby Location"
-        else:
-            context.user_data['reg_city'] = text
-            context.user_data['reg_lat'] = None
-            context.user_data['reg_lon'] = None
-        
-        skip_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("⏭ Skip", callback_data="skip_bio")]])
-
+        context.user_data['reg_city'] = text
         await update.message.reply_text(
-            "Tell more about yourself. Who are you looking for? What do you want to do? I'll find the best matches.",
-            reply_markup=skip_keyboard
+            "✨ **Tell more about yourself. Who are you looking for? What do you want to do? I'll find the best matches.**",
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode='Markdown'
         )
         context.user_data['step'] = 'waiting_bio'
         return
@@ -563,4 +464,62 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
         await save_user_profile(user_id, context, media_id, media_type)
-        context.user_data.cle
+        context.user_data.clear()
+        
+        await update.message.reply_text(
+            "✅ Your profile has been successfully saved! 🎉",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        await update.message.reply_text(
+            "🏠 **Main Menu**",
+            parse_mode='Markdown',
+            reply_markup=get_main_menu()
+        )
+        return
+
+    elif step == 'waiting_like_message':
+        target_id = context.user_data.get('current_target')
+        msg_text = update.message.text if update.message.text else "Sent a message"
+        
+        context.user_data.pop('step', None)
+        await process_like(update, context, user_id, target_id, "like", custom_msg=msg_text)
+        return
+
+    user_prof = get_user_profile(user_id)
+    if not user_prof:
+        await update.message.reply_text("⚠️ Profile not found. Please click /start.")
+        return
+
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
+
+def main():
+    server_thread = threading.Thread(target=run_web_server, daemon=True)
+    server_thread.start()
+
+    token = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
+
+    application = Application.builder().token(token).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(find_match, pattern="^find_match$"))
+    application.add_handler(CallbackQueryHandler(show_my_profile, pattern="^my_profile$"))
+    application.add_handler(CallbackQueryHandler(edit_profile, pattern="^edit_profile$"))
+    application.add_handler(CallbackQueryHandler(match_action_handler, pattern="^(match_|main_menu)"))
+    
+    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND, handle_message))
+
+    print("Bot is running...")
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
+                              
