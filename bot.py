@@ -20,8 +20,6 @@ logger = logging.getLogger(__name__)
 
 # Credentials & Configurations
 TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
-PORT = int(os.environ.get("PORT", 10000))
-RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
 
 # Database Connection
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -564,4 +562,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif step == 'waiting_like_message':
         target_id = context.user_data.get('current_target')
-        ms
+        msg_text = update.message.text if update.message.text else "Sent a message"
+        
+        context.use
