@@ -19,7 +19,6 @@ TOKEN = "8905518813:AAGfks_BGJM_g3uj0qu8ElzI0K3b6vFVj7Q"
 PORT = int(os.environ.get("PORT", 10000))
 RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
 
-# Database URL ထည့်သွင်းပြီးသား
 DATABASE_URL = "postgresql://match_db2_user:mpEoB2aqdij5vFHaSlxEq6oT4anRtVDW@dpg-d9mi39fqj5pc73d2kr8g-a/match_db2"
 
 def get_db_connection():
@@ -559,4 +558,5 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif step == 'waiting_like_message':
-        target_id = context.user_data.get('curren
+        target_id = context.user_data.get('current_target')
+        msg_text = up
